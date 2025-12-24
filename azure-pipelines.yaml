@@ -48,7 +48,7 @@ variables:
   APIM_API_ID_B: backend-b
 
 pool:
-  name: aks-private-agents
+  vmImage: ubuntu-latest
 
 stages:
 # =========================
