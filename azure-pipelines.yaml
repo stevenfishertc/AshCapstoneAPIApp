@@ -26,6 +26,11 @@ variables:
   QA_AKS_NAME: aks-capstone-qa
   PROD_AKS_NAME: aks-capstone-prod
 
+  # ----- Container Registry -----
+  DEV_ACR_NAME: acrcapstonedeva1b2c
+  QA_ACR_NAME: acrcapstoneqaa1b2c
+  PROD_ACR_NAME: acrcapstoneproda1b2c
+
   # ----- Kubernetes -----
   K8S_NAMESPACE: capstone-backend
   # Adjust if your container listens on a different port
@@ -43,7 +48,7 @@ variables:
   APIM_API_ID_B: backend-b
 
 pool:
-  vmImage: ubuntu-latest
+  name: aks-private-agents
 
 stages:
 # =========================
@@ -140,6 +145,12 @@ stages:
             -g $(DEV_RESOURCE_GROUP) \
             -n $(DEV_AKS_NAME) \
             --overwrite-existing
+
+          az aks update \
+            -g $(DEV_RESOURCE_GROUP) \
+            -n $(DEV_AKS_NAME) \
+            --attach-acr $(DEV_ACR_NAME)
+
 
     - script: |
         set -euo pipefail
@@ -256,6 +267,12 @@ stages:
               inlineScript: |
                 set -euo pipefail
                 az aks get-credentials -g $(QA_RESOURCE_GROUP) -n $(QA_AKS_NAME) --overwrite-existing
+
+                az aks update \
+                  -g $(QA_RESOURCE_GROUP) \
+                  -n $(QA_AKS_NAME) \
+                  --attach-acr $(QA_ACR_NAME)
+
                 kubectl version --client=true
 
           - script: |
@@ -422,6 +439,12 @@ stages:
               inlineScript: |
                 set -euo pipefail
                 az aks get-credentials -g $(PROD_RESOURCE_GROUP) -n $(PROD_AKS_NAME) --overwrite-existing
+
+                az aks update \
+                  -g $(DEV_RESOURCE_GROUP) \
+                  -n $(DEV_AKS_NAME) \
+                  --attach-acr $(DEV_ACR_NAME)
+
                 kubectl version --client=true
 
           - script: |
