@@ -141,11 +141,14 @@ stages:
         scriptLocation: inlineScript
         inlineScript: |
           set -euo pipefail
+
+          echo "Getting AKS credentials for $(DEV_AKS_NAME)..."
           az aks get-credentials \
             -g $(DEV_RESOURCE_GROUP) \
             -n $(DEV_AKS_NAME) \
             --overwrite-existing
 
+          echo "Attaching ACR $(DEV_ACR_NAME) to AKS cluster..."
           az aks update \
             -g $(DEV_RESOURCE_GROUP) \
             -n $(DEV_AKS_NAME) \
@@ -266,8 +269,14 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 set -euo pipefail
-                az aks get-credentials -g $(QA_RESOURCE_GROUP) -n $(QA_AKS_NAME) --overwrite-existing
 
+                echo "Getting AKS credentials for $(QA_AKS_NAME)..."
+                az aks get-credentials \
+                  -g $(QA_RESOURCE_GROUP) \
+                  -n $(QA_AKS_NAME) \
+                  --overwrite-existing
+
+                echo "Attaching ACR $(QA_ACR_NAME) to AKS cluster..."
                 az aks update \
                   -g $(QA_RESOURCE_GROUP) \
                   -n $(QA_AKS_NAME) \
@@ -438,12 +447,18 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 set -euo pipefail
-                az aks get-credentials -g $(PROD_RESOURCE_GROUP) -n $(PROD_AKS_NAME) --overwrite-existing
 
+                echo "Getting AKS credentials for $(PROD_AKS_NAME)..."
+                az aks get-credentials \
+                  -g $(PROD_RESOURCE_GROUP) \
+                  -n $(PROD_AKS_NAME) \
+                  --overwrite-existing
+
+                echo "Attaching ACR $(PROD_ACR_NAME) to AKS cluster..."
                 az aks update \
-                  -g $(DEV_RESOURCE_GROUP) \
-                  -n $(DEV_AKS_NAME) \
-                  --attach-acr $(DEV_ACR_NAME)
+                  -g $(PROD_RESOURCE_GROUP) \
+                  -n $(PROD_AKS_NAME) \
+                  --attach-acr $(PROD_ACR_NAME)
 
                 kubectl version --client=true
 
