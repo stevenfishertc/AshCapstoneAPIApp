@@ -8,6 +8,7 @@ variables:
   DEV_ACR_NAME: acrcapstonedeva1b2c
   QA_ACR_NAME: acrcapstoneqaa1b2c
   PROD_ACR_NAME: acrcapstoneproda1b2c
+  ACR_LOGIN_SERVER_SUFFIX: .azurecr.io
   IMAGE_TAG: $(Build.BuildId)
 
   # Image repos in ACR
@@ -28,12 +29,7 @@ variables:
   DEV_AKS_NAME: aks-capstone-dev
   QA_AKS_NAME: aks-capstone-qa
   PROD_AKS_NAME: aks-capstone-prod
-
-  # ----- Container Registry -----
-  DEV_ACR_NAME: acrcapstonedeva1b2c
-  QA_ACR_NAME: acrcapstoneqaa1b2c
-  PROD_ACR_NAME: acrcapstoneproda1b2c
-  ACR_LOGIN_SERVER_SUFFIX: .azurecr.io
+  
 
   # ----- Kubernetes -----
   K8S_NAMESPACE: capstone-backend
