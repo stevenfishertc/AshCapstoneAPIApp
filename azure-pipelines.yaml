@@ -56,7 +56,6 @@ stages:
 # =========================
 - stage: Deploy_Dev
   displayName: Deploy to AKS (DEV)
-  dependsOn: BuildAndPush
   jobs:
   - job: DeployDev
     displayName: Deploy backend-a & backend-b to aks-capstone-dev
