@@ -5,7 +5,9 @@ trigger:
 
 variables:
   # ----- Container Registry -----
-  ACR_NAME: acrcapstonedeva1b2c
+  DEV_ACR_NAME: acrcapstonedeva1b2c
+  QA_ACR_NAME: acrcapstoneqaa1b2c
+  PROD_ACR_NAME: acrcapstoneproda1b2c
   IMAGE_TAG: $(Build.BuildId)
 
   # Image repos in ACR
@@ -13,6 +15,7 @@ variables:
   BACKEND_B_IMAGE: backend-b
 
   # ----- Service Connections (AzureRM) -----
+  AZURE_SUBSCRIPTION: 'stevens-capstone-conn'
   DEV_SERVICE_CONN: stevens-capstone-dev-conn
   QA_SERVICE_CONN: stevens-capstone-qa-conn
   PROD_SERVICE_CONN: stevens-capstone-prod-conn
@@ -30,6 +33,7 @@ variables:
   DEV_ACR_NAME: acrcapstonedeva1b2c
   QA_ACR_NAME: acrcapstoneqaa1b2c
   PROD_ACR_NAME: acrcapstoneproda1b2c
+  ACR_LOGIN_SERVER_SUFFIX: .azurecr.io
 
   # ----- Kubernetes -----
   K8S_NAMESPACE: capstone-backend
@@ -52,75 +56,7 @@ pool:
 
 stages:
 # =========================
-# 1) BUILD + PUSH IMAGES
-# =========================
-- stage: BuildAndPush
-  displayName: Build & Push Backend Images to ACR
-  jobs:
-  - job: BuildPush
-    displayName: Docker build → ACR push (backend-a, backend-b)
-    steps:
-    - checkout: self
-
-    # Login to Azure (DEV subscription assumed to own the ACR; adjust if needed)
-    - task: AzureCLI@2
-      displayName: Azure Login (for ACR)
-      inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: |
-          set -euo pipefail
-          echo "=== ACCOUNT ==="
-          az account show -o table
-
-          echo "=== ACR LIST ==="
-          az acr list -o table
-
-          echo "=== TRY SHOW ==="
-          az acr show -n $(ACR_NAME)
-
-          az acr login -n $(ACR_NAME)
-
-    # Login to ACR
-    - task: AzureCLI@2
-      displayName: ACR Login
-      inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: |
-          set -euo pipefail
-          az acr login -n $(ACR_NAME)
-
-    # Build & push backend-a
-    - script: |
-        set -euo pipefail
-        ACR_LOGIN_SERVER="$(ACR_NAME).azurecr.io"
-        echo "Building backend-a..."
-        docker build -f backend-a/Dockerfile -t $ACR_LOGIN_SERVER/$(BACKEND_A_IMAGE):$(IMAGE_TAG) backend-a
-        docker push $ACR_LOGIN_SERVER/$(BACKEND_A_IMAGE):$(IMAGE_TAG)
-
-        # Optionally also push "latest" on main
-        docker tag $ACR_LOGIN_SERVER/$(BACKEND_A_IMAGE):$(IMAGE_TAG) $ACR_LOGIN_SERVER/$(BACKEND_A_IMAGE):latest
-        docker push $ACR_LOGIN_SERVER/$(BACKEND_A_IMAGE):latest
-      displayName: Build & Push backend-a
-
-    # Build & push backend-b
-    - script: |
-        set -euo pipefail
-        ACR_LOGIN_SERVER="$(ACR_NAME).azurecr.io"
-        echo "Building backend-b..."
-        docker build -f backend-b/Dockerfile -t $ACR_LOGIN_SERVER/$(BACKEND_B_IMAGE):$(IMAGE_TAG) backend-b
-        docker push $ACR_LOGIN_SERVER/$(BACKEND_B_IMAGE):$(IMAGE_TAG)
-
-        # Optionally also push "latest" on main
-        docker tag $ACR_LOGIN_SERVER/$(BACKEND_B_IMAGE):$(IMAGE_TAG) $ACR_LOGIN_SERVER/$(BACKEND_B_IMAGE):latest
-        docker push $ACR_LOGIN_SERVER/$(BACKEND_B_IMAGE):latest
-      displayName: Build & Push backend-b
-
-# =========================
-# 2) DEPLOY TO DEV
+# 1) BUILD AND PUSH TO DEV
 # =========================
 - stage: Deploy_Dev
   displayName: Deploy to AKS (DEV)
@@ -131,114 +67,33 @@ stages:
     steps:
     - checkout: self
 
+    # ---------- LOGIN TO ACR ----------
     - task: AzureCLI@2
-      displayName: Install kubectl
+      displayName: "Azure Login ACR (DEV)"
       inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
+        azureSubscription: $(AZURE_SUBSCRIPTION)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
-          set -euo pipefail
-          az aks install-cli
+          az acr login --name $(DEV_ACR_NAME)
 
-    - task: AzureCLI@2
-      displayName: Get AKS Credentials (DEV)
-      inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: |
-          set -euo pipefail
-
-          echo "Getting AKS credentials for $(DEV_AKS_NAME)..."
-          az aks get-credentials \
-            -g $(DEV_RESOURCE_GROUP) \
-            -n $(DEV_AKS_NAME) \
-            --overwrite-existing
-
-
+    # ---------- BUILD DOCKER ----------
     - script: |
-        set -euo pipefail
+        docker build -f backend-a/Dockerfile -t $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_A_IMAGE):$(IMAGE_TAG) backend-a
+        docker build -f backend-b/Dockerfile -t $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_B_IMAGE):$(IMAGE_TAG) backend-b
+      displayName: "Build Docker Images (DEV)"
 
-        ACR_LOGIN_SERVER="$(ACR_NAME).azurecr.io"
-        IMG_A="$ACR_LOGIN_SERVER/$(BACKEND_A_IMAGE):$(IMAGE_TAG)"
-        IMG_B="$ACR_LOGIN_SERVER/$(BACKEND_B_IMAGE):$(IMAGE_TAG)"
+    # ---------- PUSH IMAGES ----------
+    - script: |
+        docker tag backend-a $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
+        docker tag backend-b $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
 
-        kubectl get ns $(K8S_NAMESPACE) >/dev/null 2>&1 || \
-          kubectl create ns $(K8S_NAMESPACE)
-
-        cat <<EOF | kubectl apply -n $(K8S_NAMESPACE) -f -
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: backend-a
-        spec:
-          replicas: $(REPLICAS)
-          selector:
-            matchLabels:
-              app: backend-a
-          template:
-            metadata:
-              labels:
-                app: backend-a
-            spec:
-              containers:
-                - name: backend-a
-                  image: ${IMG_A}
-                  ports:
-                    - containerPort: $(CONTAINER_PORT)
-        ---
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: backend-a-svc
-        spec:
-          type: ClusterIP
-          selector:
-            app: backend-a
-          ports:
-            - port: 80
-              targetPort: $(CONTAINER_PORT)
-        ---
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: backend-b
-        spec:
-          replicas: $(REPLICAS)
-          selector:
-            matchLabels:
-              app: backend-b
-          template:
-            metadata:
-              labels:
-                app: backend-b
-            spec:
-              containers:
-                - name: backend-b
-                  image: ${IMG_B}
-                  ports:
-                    - containerPort: $(CONTAINER_PORT)
-        ---
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: backend-b-svc
-        spec:
-          type: ClusterIP
-          selector:
-            app: backend-b
-          ports:
-            - port: 80
-              targetPort: $(CONTAINER_PORT)
-        EOF
-
-        kubectl rollout status deploy/backend-a -n $(K8S_NAMESPACE)
-        kubectl rollout status deploy/backend-b -n $(K8S_NAMESPACE)
-      displayName: Deploy to DEV
+        docker push $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
+        docker push $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
+      displayName: "Push Images to ACR (DEV)"
 
 # =========================
-# 3) DEPLOY TO QA
+# 2) BUILD AND PUSH TO QA
 # =========================
 - stage: Deploy_QA
   displayName: Deploy to AKS (QA)
@@ -253,164 +108,33 @@ stages:
           steps:
           - checkout: self
 
+          # ---------- LOGIN TO ACR ----------
           - task: AzureCLI@2
-            displayName: Install kubectl
+            displayName: "Azure Login ACR (QA)"
             inputs:
-              azureSubscription: $(QA_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                set -euo pipefail
-                az aks install-cli
+                az acr login --name $(QA_ACR_NAME)
 
-          - task: AzureCLI@2
-            displayName: Get AKS Credentials (QA)
-            inputs:
-              azureSubscription: $(QA_SERVICE_CONN)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -euo pipefail
-
-                echo "Getting AKS credentials for $(QA_AKS_NAME)..."
-                az aks get-credentials \
-                  -g $(QA_RESOURCE_GROUP) \
-                  -n $(QA_AKS_NAME) \
-                  --overwrite-existing
-
-                kubectl version --client=true
-
+          # ---------- BUILD DOCKER ----------
           - script: |
-              set -euo pipefail
+              docker build -f backend-a/Dockerfile -t $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_A_IMAGE):$(IMAGE_TAG) backend-a
+              docker build -f backend-b/Dockerfile -t $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_B_IMAGE):$(IMAGE_TAG) backend-b
+            displayName: "Build Docker Images (QA)"
 
-              ACR_LOGIN_SERVER="$(ACR_NAME).azurecr.io"
-              IMG_A="$ACR_LOGIN_SERVER/$(BACKEND_A_IMAGE):$(IMAGE_TAG)"
-              IMG_B="$ACR_LOGIN_SERVER/$(BACKEND_B_IMAGE):$(IMAGE_TAG)"
+          # ---------- PUSH IMAGES ----------
+          - script: |
+              docker tag backend-a $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
+              docker tag backend-b $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
 
-              kubectl get ns $(K8S_NAMESPACE) >/dev/null 2>&1 || kubectl create ns $(K8S_NAMESPACE)
-
-              cat <<EOF | kubectl apply -n $(K8S_NAMESPACE) -f -
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: backend-a
-              spec:
-                replicas: $(REPLICAS)
-                selector:
-                  matchLabels:
-                    app: backend-a
-                template:
-                  metadata:
-                    labels:
-                      app: backend-a
-                  spec:
-                    containers:
-                      - name: backend-a
-                        image: ${IMG_A}
-                        imagePullPolicy: IfNotPresent
-                        ports:
-                          - containerPort: $(CONTAINER_PORT)
-                        env:
-                          - name: PORT
-                            value: "$(CONTAINER_PORT)"
-              ---
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: backend-a-svc
-              spec:
-                type: ClusterIP
-                selector:
-                  app: backend-a
-                ports:
-                  - name: http
-                    port: 80
-                    targetPort: $(CONTAINER_PORT)
-              ---
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: backend-b
-              spec:
-                replicas: $(REPLICAS)
-                selector:
-                  matchLabels:
-                    app: backend-b
-                template:
-                  metadata:
-                    labels:
-                      app: backend-b
-                  spec:
-                    containers:
-                      - name: backend-b
-                        image: ${IMG_B}
-                        imagePullPolicy: IfNotPresent
-                        ports:
-                          - containerPort: $(CONTAINER_PORT)
-                        env:
-                          - name: PORT
-                            value: "$(CONTAINER_PORT)"
-              ---
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: backend-b-svc
-              spec:
-                type: ClusterIP
-                selector:
-                  app: backend-b
-                ports:
-                  - name: http
-                    port: 80
-                    targetPort: $(CONTAINER_PORT)
-              EOF
-
-              kubectl rollout status deploy/backend-a -n $(K8S_NAMESPACE) --timeout=180s
-              kubectl rollout status deploy/backend-b -n $(K8S_NAMESPACE) --timeout=180s
-            displayName: Deploy to QA (kubectl apply)
-
-          - task: AzureCLI@2
-            displayName: APIM (QA) - Update API service URLs (optional)
-            inputs:
-              azureSubscription: $(QA_SERVICE_CONN)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -euo pipefail
-
-                INGRESS_NS="ingress-nginx"
-                INGRESS_SVC="ingress-nginx-controller"
-                INGRESS_IP="$(kubectl get svc -n ${INGRESS_NS} ${INGRESS_SVC} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-                INGRESS_HOST="$(kubectl get svc -n ${INGRESS_NS} ${INGRESS_SVC} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
-
-                BASE=""
-                if [ -n "${INGRESS_IP}" ]; then BASE="http://${INGRESS_IP}"; fi
-                if [ -z "${BASE}" ] && [ -n "${INGRESS_HOST}" ]; then BASE="http://${INGRESS_HOST}"; fi
-
-                if [ -z "${BASE}" ]; then
-                  echo "No ingress IP/hostname found. Skipping APIM update."
-                  exit 0
-                fi
-
-                URL_A="${BASE}/backend-a"
-                URL_B="${BASE}/backend-b"
-
-                az apim api update \
-                  --service-name $(QA_APIM_NAME) \
-                  --resource-group $(QA_RESOURCE_GROUP) \
-                  --api-id $(APIM_API_ID_A) \
-                  --set serviceUrl="${URL_A}" \
-                  -o none || echo "API '$(APIM_API_ID_A)' not found in APIM; skipping."
-
-                az apim api update \
-                  --service-name $(QA_APIM_NAME) \
-                  --resource-group $(QA_RESOURCE_GROUP) \
-                  --api-id $(APIM_API_ID_B) \
-                  --set serviceUrl="${URL_B}" \
-                  -o none || echo "API '$(APIM_API_ID_B)' not found in APIM; skipping."
+              docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
+              docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
+            displayName: "Push Images to ACR (QA)"
 
 # =========================
-# 4) DEPLOY TO PROD
+# 3) BUILD AND PUSH TO PROD
 # =========================
 - stage: Deploy_Prod
   displayName: Deploy to AKS (PROD)
@@ -425,158 +149,27 @@ stages:
           steps:
           - checkout: self
 
+          # ---------- LOGIN TO ACR ----------
           - task: AzureCLI@2
-            displayName: Install kubectl
+            displayName: "Azure Login ACR (PROD)"
             inputs:
-              azureSubscription: $(PROD_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                set -euo pipefail
-                az aks install-cli
+                az acr login --name $(PROD_ACR_NAME)
 
-          - task: AzureCLI@2
-            displayName: Get AKS Credentials (PROD)
-            inputs:
-              azureSubscription: $(PROD_SERVICE_CONN)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -euo pipefail
-
-                echo "Getting AKS credentials for $(PROD_AKS_NAME)..."
-                az aks get-credentials \
-                  -g $(PROD_RESOURCE_GROUP) \
-                  -n $(PROD_AKS_NAME) \
-                  --overwrite-existing
-
-                kubectl version --client=true
-
+          # ---------- BUILD DOCKER ----------
           - script: |
-              set -euo pipefail
+              docker build -f backend-a/Dockerfile -t $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_A_IMAGE):$(IMAGE_TAG) backend-a
+              docker build -f backend-b/Dockerfile -t $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_B_IMAGE):$(IMAGE_TAG) backend-b
+            displayName: "Build Docker Images (PROD)"
 
-              ACR_LOGIN_SERVER="$(ACR_NAME).azurecr.io"
-              IMG_A="$ACR_LOGIN_SERVER/$(BACKEND_A_IMAGE):$(IMAGE_TAG)"
-              IMG_B="$ACR_LOGIN_SERVER/$(BACKEND_B_IMAGE):$(IMAGE_TAG)"
+          # ---------- PUSH IMAGES ----------
+          - script: |
+              docker tag backend-a $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
+              docker tag backend-b $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
 
-              kubectl get ns $(K8S_NAMESPACE) >/dev/null 2>&1 || kubectl create ns $(K8S_NAMESPACE)
-
-              cat <<EOF | kubectl apply -n $(K8S_NAMESPACE) -f -
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: backend-a
-              spec:
-                replicas: $(REPLICAS)
-                selector:
-                  matchLabels:
-                    app: backend-a
-                template:
-                  metadata:
-                    labels:
-                      app: backend-a
-                  spec:
-                    containers:
-                      - name: backend-a
-                        image: ${IMG_A}
-                        imagePullPolicy: IfNotPresent
-                        ports:
-                          - containerPort: $(CONTAINER_PORT)
-                        env:
-                          - name: PORT
-                            value: "$(CONTAINER_PORT)"
-              ---
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: backend-a-svc
-              spec:
-                type: ClusterIP
-                selector:
-                  app: backend-a
-                ports:
-                  - name: http
-                    port: 80
-                    targetPort: $(CONTAINER_PORT)
-              ---
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: backend-b
-              spec:
-                replicas: $(REPLICAS)
-                selector:
-                  matchLabels:
-                    app: backend-b
-                template:
-                  metadata:
-                    labels:
-                      app: backend-b
-                  spec:
-                    containers:
-                      - name: backend-b
-                        image: ${IMG_B}
-                        imagePullPolicy: IfNotPresent
-                        ports:
-                          - containerPort: $(CONTAINER_PORT)
-                        env:
-                          - name: PORT
-                            value: "$(CONTAINER_PORT)"
-              ---
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: backend-b-svc
-              spec:
-                type: ClusterIP
-                selector:
-                  app: backend-b
-                ports:
-                  - name: http
-                    port: 80
-                    targetPort: $(CONTAINER_PORT)
-              EOF
-
-              kubectl rollout status deploy/backend-a -n $(K8S_NAMESPACE) --timeout=180s
-              kubectl rollout status deploy/backend-b -n $(K8S_NAMESPACE) --timeout=180s
-            displayName: Deploy to PROD (kubectl apply)
-
-          - task: AzureCLI@2
-            displayName: APIM (PROD) - Update API service URLs (optional)
-            inputs:
-              azureSubscription: $(PROD_SERVICE_CONN)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -euo pipefail
-
-                INGRESS_NS="ingress-nginx"
-                INGRESS_SVC="ingress-nginx-controller"
-                INGRESS_IP="$(kubectl get svc -n ${INGRESS_NS} ${INGRESS_SVC} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-                INGRESS_HOST="$(kubectl get svc -n ${INGRESS_NS} ${INGRESS_SVC} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
-
-                BASE=""
-                if [ -n "${INGRESS_IP}" ]; then BASE="http://${INGRESS_IP}"; fi
-                if [ -z "${BASE}" ] && [ -n "${INGRESS_HOST}" ]; then BASE="http://${INGRESS_HOST}"; fi
-
-                if [ -z "${BASE}" ]; then
-                  echo "No ingress IP/hostname found. Skipping APIM update."
-                  exit 0
-                fi
-
-                URL_A="${BASE}/backend-a"
-                URL_B="${BASE}/backend-b"
-
-                az apim api update \
-                  --service-name $(PROD_APIM_NAME) \
-                  --resource-group $(PROD_RESOURCE_GROUP) \
-                  --api-id $(APIM_API_ID_A) \
-                  --set serviceUrl="${URL_A}" \
-                  -o none || echo "API '$(APIM_API_ID_A)' not found in APIM; skipping."
-
-                az apim api update \
-                  --service-name $(PROD_APIM_NAME) \
-                  --resource-group $(PROD_RESOURCE_GROUP) \
-                  --api-id $(APIM_API_ID_B) \
-                  --set serviceUrl="${URL_B}" \
-                  -o none || echo "API '$(APIM_API_ID_B)' not found in APIM; skipping."
+              docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
+              docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
+            displayName: "Push Images to ACR (PROD)"
