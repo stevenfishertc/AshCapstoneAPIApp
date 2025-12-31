@@ -83,6 +83,15 @@ stages:
         scriptLocation: inlineScript
         inlineScript: |
           set -euo pipefail
+          echo "=== ACCOUNT ==="
+          az account show -o table
+
+          echo "=== ACR LIST ==="
+          az acr list -o table
+
+          echo "=== TRY SHOW ==="
+          az acr show -n $(ACR_NAME)
+
           az acr login -n $(ACR_NAME)
 
     # Build & push backend-a
