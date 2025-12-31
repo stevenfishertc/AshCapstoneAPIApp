@@ -9,7 +9,7 @@ variables:
   QA_ACR_NAME: acrcapstoneqaa1b2c
   PROD_ACR_NAME: acrcapstoneproda1b2c
   ACR_LOGIN_SERVER_SUFFIX: .azurecr.io
-  IMAGE_TAG: $(Build.BuildId)
+  IMAGE_TAG: latest
 
   # Image repos in ACR
   BACKEND_A_IMAGE: backend-a
