@@ -70,7 +70,19 @@ stages:
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
-          az acr login --name $(DEV_ACR_NAME)
+          set -euo pipefail
+
+          ACR_LOGIN_SERVER="$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)"
+
+          TOKEN=$(az acr login \
+            --name $(DEV_ACR_NAME) \
+            --expose-token \
+            --query accessToken \
+            -o tsv)
+
+          echo "$TOKEN" | docker login "$ACR_LOGIN_SERVER" \
+            --username 00000000-0000-0000-0000-000000000000 \
+            --password-stdin
 
     # ---------- BUILD DOCKER ----------
     - script: |
@@ -146,7 +158,17 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                az acr login --name $(QA_ACR_NAME)
+                ACR_LOGIN_SERVER="$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)"
+
+                TOKEN=$(az acr login \
+                  --name $(QA_ACR_NAME) \
+                  --expose-token \
+                  --query accessToken \
+                  -o tsv)
+
+                echo "$TOKEN" | docker login "$ACR_LOGIN_SERVER" \
+                  --username 00000000-0000-0000-0000-000000000000 \
+                  --password-stdin
 
           # ---------- BUILD DOCKER ----------
           - script: |
@@ -222,7 +244,17 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                az acr login --name $(PROD_ACR_NAME)
+                ACR_LOGIN_SERVER="$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)"
+
+                TOKEN=$(az acr login \
+                  --name $(PROD_ACR_NAME) \
+                  --expose-token \
+                  --query accessToken \
+                  -o tsv)
+
+                echo "$TOKEN" | docker login "$ACR_LOGIN_SERVER" \
+                  --username 00000000-0000-0000-0000-000000000000 \
+                  --password-stdin
 
           # ---------- BUILD DOCKER ----------
           - script: |
