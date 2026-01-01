@@ -1,5 +1,6 @@
 resources:
   - ../../base
+  - namespace.yaml
   - configmap-db.yaml
 
 namespace: capstone-backend
