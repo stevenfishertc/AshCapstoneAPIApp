@@ -29,7 +29,7 @@ variables:
   DEV_AKS_NAME: aks-capstone-dev
   QA_AKS_NAME: aks-capstone-qa
   PROD_AKS_NAME: aks-capstone-prod
-  
+
 
   # ----- Kubernetes -----
   K8S_NAMESPACE: capstone-backend
@@ -66,23 +66,11 @@ stages:
     - task: AzureCLI@2
       displayName: "Azure Login ACR (DEV)"
       inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
+        azureSubscription: $(AZURE_SUBSCRIPTION)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
-          set -euo pipefail
-
-          ACR_LOGIN_SERVER="$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)"
-
-          TOKEN=$(az acr login \
-            --name $(DEV_ACR_NAME) \
-            --expose-token \
-            --query accessToken \
-            -o tsv)
-
-          echo "$TOKEN" | docker login "$ACR_LOGIN_SERVER" \
-            --username 00000000-0000-0000-0000-000000000000 \
-            --password-stdin
+          az acr login --name $(DEV_ACR_NAME)
 
     # ---------- BUILD DOCKER ----------
     - script: |
@@ -103,14 +91,14 @@ stages:
     - task: AzureCLI@2
       displayName: Deploy to AKS (DEV)
       inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
+        azureSubscription: $(AZURE_SUBSCRIPTION)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
           set -euo pipefail
 
-          export KUBECONFIG=$HOME/.kube/config
-          mkdir -p $HOME/.kube
+          # export KUBECONFIG=$HOME/.kube/config
+          # mkdir -p $HOME/.kube
 
           az aks get-credentials \
             --resource-group $(DEV_RESOURCE_GROUP) \
@@ -118,8 +106,8 @@ stages:
             --admin \
             --overwrite-existing
 
-          kubectl config current-context
-          kubectl get nodes
+          # kubectl config current-context
+          # kubectl get nodes
 
           kubectl apply -k k8s/overlays/dev
 
@@ -154,21 +142,11 @@ stages:
           - task: AzureCLI@2
             displayName: "Azure Login ACR (QA)"
             inputs:
-              azureSubscription: $(QA_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                ACR_LOGIN_SERVER="$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)"
-
-                TOKEN=$(az acr login \
-                  --name $(QA_ACR_NAME) \
-                  --expose-token \
-                  --query accessToken \
-                  -o tsv)
-
-                echo "$TOKEN" | docker login "$ACR_LOGIN_SERVER" \
-                  --username 00000000-0000-0000-0000-000000000000 \
-                  --password-stdin
+                az acr login --name $(QA_ACR_NAME)
 
           # ---------- BUILD DOCKER ----------
           - script: |
@@ -178,7 +156,7 @@ stages:
               docker build -f backend-b/Dockerfile \
                 -t $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) backend-b
             displayName: Build Images (QA)
-            
+
           # ---------- PUSH IMAGES ----------
           - script: |
               docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
@@ -189,23 +167,23 @@ stages:
           - task: AzureCLI@2
             displayName: Deploy to AKS (QA)
             inputs:
-              azureSubscription: $(QA_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 set -euo pipefail
 
-                export KUBECONFIG=$HOME/.kube/config
-                mkdir -p $HOME/.kube
+                # export KUBECONFIG=$HOME/.kube/config
+                # mkdir -p $HOME/.kube
 
                 az aks get-credentials \
                   --resource-group $(QA_RESOURCE_GROUP) \
                   --name $(QA_AKS_NAME) \
                   --admin \
                   --overwrite-existing
-                
-                kubectl config current-context
-                kubectl get nodes
+
+                # kubectl config current-context
+                # kubectl get nodes
 
                 kubectl apply -k k8s/overlays/qa
 
@@ -240,21 +218,11 @@ stages:
           - task: AzureCLI@2
             displayName: "Azure Login ACR (PROD)"
             inputs:
-              azureSubscription: $(PROD_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                ACR_LOGIN_SERVER="$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)"
-
-                TOKEN=$(az acr login \
-                  --name $(PROD_ACR_NAME) \
-                  --expose-token \
-                  --query accessToken \
-                  -o tsv)
-
-                echo "$TOKEN" | docker login "$ACR_LOGIN_SERVER" \
-                  --username 00000000-0000-0000-0000-000000000000 \
-                  --password-stdin
+                az acr login --name $(PROD_ACR_NAME)
 
           # ---------- BUILD DOCKER ----------
           - script: |
@@ -275,14 +243,14 @@ stages:
           - task: AzureCLI@2
             displayName: Deploy to AKS (PROD)
             inputs:
-              azureSubscription: $(PROD_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 set -euo pipefail
 
-                export KUBECONFIG=$HOME/.kube/config
-                mkdir -p $HOME/.kube
+                # export KUBECONFIG=$HOME/.kube/config
+                # mkdir -p $HOME/.kube
 
                 az aks get-credentials \
                   --resource-group $(PROD_RESOURCE_GROUP) \
@@ -290,8 +258,8 @@ stages:
                   --admin \
                   --overwrite-existing
 
-                kubectl config current-context
-                kubectl get nodes
+                # kubectl config current-context
+                # kubectl get nodes
 
                 kubectl apply -k k8s/overlays/prod
 
