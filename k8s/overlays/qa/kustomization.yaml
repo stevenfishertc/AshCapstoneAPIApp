@@ -1,0 +1,13 @@
+resources:
+  - ../../base
+  - db-config.yaml
+
+namespace: capstone-backend
+
+nameSuffix: -steven
+
+replicas:
+  - name: backend-a
+    count: 2
+  - name: backend-b
+    count: 2

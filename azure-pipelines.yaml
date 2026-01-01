@@ -9,7 +9,7 @@ variables:
   QA_ACR_NAME: acrcapstoneqaa1b2c
   PROD_ACR_NAME: acrcapstoneproda1b2c
   ACR_LOGIN_SERVER_SUFFIX: .azurecr.io
-  IMAGE_TAG: latest
+  IMAGE_TAG: $(Build.BuildId)
 
   # Image repos in ACR
   BACKEND_A_IMAGE: backend-a
@@ -74,18 +74,44 @@ stages:
 
     # ---------- BUILD DOCKER ----------
     - script: |
-        docker build -f backend-a/Dockerfile -t $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_A_IMAGE):$(IMAGE_TAG) backend-a
-        docker build -f backend-b/Dockerfile -t $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_B_IMAGE):$(IMAGE_TAG) backend-b
-      displayName: "Build Docker Images (DEV)"
+        docker build -f backend-a/Dockerfile \
+          -t $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) backend-a
+
+        docker build -f backend-b/Dockerfile \
+          -t $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) backend-b
+      displayName: Build Images (DEV)
 
     # ---------- PUSH IMAGES ----------
     - script: |
-        docker tag backend-a $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
-        docker tag backend-b $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
-
-        docker push $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
-        docker push $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
+        docker push $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+        docker push $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
       displayName: "Push Images to ACR (DEV)"
+
+    # ---------- DEPLOY TO AKS ----------
+    - task: AzureCLI@2
+      displayName: Deploy to AKS (DEV)
+      inputs:
+        azureSubscription: $(DEV_SERVICE_CONN)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az aks get-credentials \
+            --resource-group $(DEV_RESOURCE_GROUP) \
+            --name $(DEV_AKS_NAME) \
+            --overwrite-existing
+
+          kubectl apply -k k8s/overlays/dev
+
+          kubectl set image deployment/backend-a-steven \
+            backend-a=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) \
+            -n $(K8S_NAMESPACE)
+
+          kubectl set image deployment/backend-b-steven \
+            backend-b=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) \
+            -n $(K8S_NAMESPACE)
+
+          kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
+          kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
 
 # =========================
 # 2) BUILD AND PUSH TO QA
@@ -115,18 +141,44 @@ stages:
 
           # ---------- BUILD DOCKER ----------
           - script: |
-              docker build -f backend-a/Dockerfile -t $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_A_IMAGE):$(IMAGE_TAG) backend-a
-              docker build -f backend-b/Dockerfile -t $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_B_IMAGE):$(IMAGE_TAG) backend-b
-            displayName: "Build Docker Images (QA)"
+              docker build -f backend-a/Dockerfile \
+                -t $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) backend-a
 
+              docker build -f backend-b/Dockerfile \
+                -t $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) backend-b
+            displayName: Build Images (QA)
+            
           # ---------- PUSH IMAGES ----------
           - script: |
-              docker tag backend-a $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
-              docker tag backend-b $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
-
-              docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
-              docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
+              docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+              docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
             displayName: "Push Images to ACR (QA)"
+
+          # ---------- DEPLOY TO AKS ----------
+          - task: AzureCLI@2
+            displayName: Deploy to AKS (QA)
+            inputs:
+              azureSubscription: $(QA_SERVICE_CONN)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az aks get-credentials \
+                  --resource-group $(QA_RESOURCE_GROUP) \
+                  --name $(QA_AKS_NAME) \
+                  --overwrite-existing
+
+                kubectl apply -k k8s/overlays/qa
+
+                kubectl set image deployment/backend-a-steven \
+                  backend-a=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) \
+                  -n $(K8S_NAMESPACE)
+
+                kubectl set image deployment/backend-b-steven \
+                  backend-b=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) \
+                  -n $(K8S_NAMESPACE)
+
+                kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
+                kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
 
 # =========================
 # 3) BUILD AND PUSH TO PROD
@@ -156,15 +208,41 @@ stages:
 
           # ---------- BUILD DOCKER ----------
           - script: |
-              docker build -f backend-a/Dockerfile -t $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_A_IMAGE):$(IMAGE_TAG) backend-a
-              docker build -f backend-b/Dockerfile -t $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/$(BACKEND_B_IMAGE):$(IMAGE_TAG) backend-b
-            displayName: "Build Docker Images (PROD)"
+              docker build -f backend-a/Dockerfile \
+                -t $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) backend-a
+
+              docker build -f backend-b/Dockerfile \
+                -t $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) backend-b
+            displayName: Build Images (PROD)
 
           # ---------- PUSH IMAGES ----------
           - script: |
-              docker tag backend-a $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
-              docker tag backend-b $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
-
-              docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:latest
-              docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:latest
+              docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+              docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
             displayName: "Push Images to ACR (PROD)"
+
+          # ---------- DEPLOY TO AKS ----------
+          - task: AzureCLI@2
+            displayName: Deploy to AKS (PROD)
+            inputs:
+              azureSubscription: $(PROD_SERVICE_CONN)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az aks get-credentials \
+                  --resource-group $(PROD_RESOURCE_GROUP) \
+                  --name $(PROD_AKS_NAME) \
+                  --overwrite-existing
+
+                kubectl apply -k k8s/overlays/prod
+
+                kubectl set image deployment/backend-a-steven \
+                  backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) \
+                  -n $(K8S_NAMESPACE)
+
+                kubectl set image deployment/backend-b-steven \
+                  backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) \
+                  -n $(K8S_NAMESPACE)
+
+                kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
+                kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)

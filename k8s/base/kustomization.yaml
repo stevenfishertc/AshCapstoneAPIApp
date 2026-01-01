@@ -1,0 +1,7 @@
+resources:
+  - backend-a-deployment.yaml
+  - backend-a-service.yaml
+  - backend-a-hpa.yaml
+  - backend-b-deployment.yaml
+  - backend-b-service.yaml
+  - backend-b-hpa.yaml
