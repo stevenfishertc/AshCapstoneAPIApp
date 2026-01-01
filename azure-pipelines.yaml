@@ -66,7 +66,7 @@ stages:
     - task: AzureCLI@2
       displayName: "Azure Login ACR (DEV)"
       inputs:
-        azureSubscription: $(AZURE_SUBSCRIPTION)
+        azureSubscription: $(DEV_SERVICE_CONN)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
@@ -96,6 +96,9 @@ stages:
         scriptLocation: inlineScript
         inlineScript: |
           set -euo pipefail
+
+          export KUBECONFIG=$HOME/.kube/config
+          mkdir -p $HOME/.kube
 
           az aks get-credentials \
             --resource-group $(DEV_RESOURCE_GROUP) \
@@ -139,7 +142,7 @@ stages:
           - task: AzureCLI@2
             displayName: "Azure Login ACR (QA)"
             inputs:
-              azureSubscription: $(AZURE_SUBSCRIPTION)
+              azureSubscription: $(QA_SERVICE_CONN)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -169,6 +172,9 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 set -euo pipefail
+
+                export KUBECONFIG=$HOME/.kube/config
+                mkdir -p $HOME/.kube
 
                 az aks get-credentials \
                   --resource-group $(QA_RESOURCE_GROUP) \
@@ -212,7 +218,7 @@ stages:
           - task: AzureCLI@2
             displayName: "Azure Login ACR (PROD)"
             inputs:
-              azureSubscription: $(AZURE_SUBSCRIPTION)
+              azureSubscription: $(PROD_SERVICE_CONN)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -242,6 +248,9 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 set -euo pipefail
+
+                export KUBECONFIG=$HOME/.kube/config
+                mkdir -p $HOME/.kube
 
                 az aks get-credentials \
                   --resource-group $(PROD_RESOURCE_GROUP) \
