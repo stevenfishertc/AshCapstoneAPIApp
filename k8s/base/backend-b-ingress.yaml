@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend-b-ingress
+  namespace: capstone-backend
+spec:
+  rules:
+  - host: backend-b.dev.example.com
+    http:
+      paths:
+      - path: /api/b
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-b
+            port:
+              number: 80
