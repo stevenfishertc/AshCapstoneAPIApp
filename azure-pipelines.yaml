@@ -113,6 +113,8 @@ stages:
           
           kustomize edit set image backend-a=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
           
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
+
           kubectl apply -k .
           
           kubectl delete pod -n $(K8S_NAMESPACE) --all
@@ -187,6 +189,8 @@ stages:
 
                 kustomize edit set image backend-a=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
 
+                kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
+
                 kubectl apply -k .
                 
                 kubectl delete pod -n $(K8S_NAMESPACE) --all
@@ -260,6 +264,8 @@ stages:
                 cd k8s/overlays/prod
 
                 kustomize edit set image backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+                
+                kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
                 kubectl apply -k .
                 
