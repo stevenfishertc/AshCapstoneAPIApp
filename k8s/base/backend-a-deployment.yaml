@@ -60,23 +60,14 @@ spec:
               name: postgres-secret
               key: POSTGRES_PASSWORD
 
-        startupProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          failureThreshold: 60
-          periodSeconds: 10
-
         readinessProbe:
-          httpGet:
-            path: /ready
+          tcpSocket:
             port: 8080
-          initialDelaySeconds: 30
+          initialDelaySeconds: 10
           periodSeconds: 10
 
         livenessProbe:
-          httpGet:
-            path: /health
+          tcpSocket:
             port: 8080
-          initialDelaySeconds: 60
+          initialDelaySeconds: 30
           periodSeconds: 20
