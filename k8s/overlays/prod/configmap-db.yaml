@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-config
 data:
-  DB_HOST: postgres-prod
+  DB_HOST: appdb.postgres.database.azure.com
   DB_PORT: "5432"
-  DB_NAME: webappdb
-  DB_USER: pgadmin
+  DB_NAME: appdb
+  DB_USER: stevushka@appdb

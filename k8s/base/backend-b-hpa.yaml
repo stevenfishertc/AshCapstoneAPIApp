@@ -1,12 +1,12 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: backend-b-hpa-steven
+  name: backend-b-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: backend-b-steven
+    name: backend-b
   minReplicas: 2
   maxReplicas: 5
   metrics:
