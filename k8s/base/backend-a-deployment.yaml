@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: backend-a
-        image: backend-a   # ⬅️ placeholder only
+        image: backend-a
         ports:
         - containerPort: 8080
 
@@ -62,21 +62,21 @@ spec:
 
         startupProbe:
           httpGet:
-            path: /healthz
+            path: /health
             port: 8080
           failureThreshold: 60
           periodSeconds: 10
 
         readinessProbe:
           httpGet:
-            path: /readyz
+            path: /ready
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
 
         livenessProbe:
           httpGet:
-            path: /healthz
+            path: /health
             port: 8080
           initialDelaySeconds: 60
           periodSeconds: 20
