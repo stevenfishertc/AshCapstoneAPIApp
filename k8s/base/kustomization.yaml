@@ -5,3 +5,4 @@ resources:
   - backend-b-deployment.yaml
   - backend-b-service.yaml
   - backend-b-hpa.yaml
+  - postgres-secret.yaml
