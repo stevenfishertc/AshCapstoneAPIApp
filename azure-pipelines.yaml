@@ -109,12 +109,16 @@ stages:
           # kubectl config current-context
           # kubectl get nodes
 
-          kustomize edit set image backend-a=acrcapstonedeva1b2c.azurecr.io/backend-a:$(Build.BuildId) backend-b=acrcapstonedeva1b2c.azurecr.io/backend-b:$(Build.BuildId)
+          cd k8s/overlays/dev
+          
+          kustomize edit set image backend-a=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+          
+          kubectl apply -k .
+          
+          kubectl delete pod -n $(K8S_NAMESPACE) --all
 
-          kubectl apply -k k8s/overlays/dev
-
-          kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
-          kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
+          # kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
+          # kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
 
 # =========================
 # 2) BUILD AND PUSH TO QA
@@ -179,12 +183,16 @@ stages:
                 # kubectl config current-context
                 # kubectl get nodes
 
-                kustomize edit set image backend-a=acrcapstoneqaa1b2c.azurecr.io/backend-a:$(Build.BuildId) backend-b=acrcapstoneqaa1b2c.azurecr.io/backend-b:$(Build.BuildId)
+                cd k8s/overlays/qa
 
-                kubectl apply -k k8s/overlays/qa
+                kustomize edit set image backend-a=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
 
-                kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
-                kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
+                kubectl apply -k .
+                
+                kubectl delete pod -n $(K8S_NAMESPACE) --all
+
+                # kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
+                # kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
 
 # =========================
 # 3) BUILD AND PUSH TO PROD
@@ -249,9 +257,13 @@ stages:
                 # kubectl config current-context
                 # kubectl get nodes
 
-                kustomize edit set image backend-a=acrcapstoneproda1b2c.azurecr.io/backend-a:$(Build.BuildId) backend-b=acrcapstoneproda1b2c.azurecr.io/backend-b:$(Build.BuildId)
+                cd k8s/overlays/prod
 
-                kubectl apply -k k8s/overlays/prod
+                kustomize edit set image backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
 
-                kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
-                kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
+                kubectl apply -k .
+                
+                kubectl delete pod -n $(K8S_NAMESPACE) --all
+
+                # kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
+                # kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
