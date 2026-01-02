@@ -4,6 +4,7 @@ metadata:
   name: backend-a-ingress
   namespace: capstone-backend
 spec:
+  ingressClassName: nginx
   rules:
   - host: backend-a.dev.example.com
     http:
