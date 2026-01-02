@@ -12,3 +12,11 @@ replicas:
     count: 2
   - name: backend-b
     count: 2
+
+images:
+  - name: backend-a
+    newName: acrcapstoneqaa1b2c.azurecr.io/backend-a
+    newTag: "144"
+  - name: backend-b
+    newName: acrcapstoneqaa1b2c.azurecr.io/backend-b
+    newTag: "144"

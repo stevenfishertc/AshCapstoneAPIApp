@@ -109,15 +109,9 @@ stages:
           # kubectl config current-context
           # kubectl get nodes
 
+          kustomize edit set image backend-a=acrcapstonedeva1b2c.azurecr.io/backend-a:$(Build.BuildId) backend-b=acrcapstonedeva1b2c.azurecr.io/backend-b:$(Build.BuildId)
+
           kubectl apply -k k8s/overlays/dev
-
-          kubectl set image deployment/backend-a-steven \
-            backend-a=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) \
-            -n $(K8S_NAMESPACE)
-
-          kubectl set image deployment/backend-b-steven \
-            backend-b=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) \
-            -n $(K8S_NAMESPACE)
 
           kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
           kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
@@ -185,15 +179,9 @@ stages:
                 # kubectl config current-context
                 # kubectl get nodes
 
+                kustomize edit set image backend-a=acrcapstoneqaa1b2c.azurecr.io/backend-a:$(Build.BuildId) backend-b=acrcapstoneqaa1b2c.azurecr.io/backend-b:$(Build.BuildId)
+
                 kubectl apply -k k8s/overlays/qa
-
-                kubectl set image deployment/backend-a-steven \
-                  backend-a=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) \
-                  -n $(K8S_NAMESPACE)
-
-                kubectl set image deployment/backend-b-steven \
-                  backend-b=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) \
-                  -n $(K8S_NAMESPACE)
 
                 kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
                 kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
@@ -261,15 +249,9 @@ stages:
                 # kubectl config current-context
                 # kubectl get nodes
 
+                kustomize edit set image backend-a=acrcapstoneproda1b2c.azurecr.io/backend-a:$(Build.BuildId) backend-b=acrcapstoneproda1b2c.azurecr.io/backend-b:$(Build.BuildId)
+
                 kubectl apply -k k8s/overlays/prod
-
-                kubectl set image deployment/backend-a-steven \
-                  backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(Build.BuildId) \
-                  -n $(K8S_NAMESPACE)
-
-                kubectl set image deployment/backend-b-steven \
-                  backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(Build.BuildId) \
-                  -n $(K8S_NAMESPACE)
 
                 kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
                 kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
