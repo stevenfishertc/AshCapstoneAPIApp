@@ -2,6 +2,7 @@ resources:
   - ../../base
   - namespace.yaml
   - configmap-db.yaml
+  - ingress-hosts.yaml
 
 namespace: capstone-backend
 

@@ -7,13 +7,3 @@ data:
   DB_PORT: "5432"
   DB_NAME: appdb
   DB_USER: stevushka@appdb
-
----
-
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ingress-hosts
-data:
-  BACKEND_A_HOST: backend-a.prod.capstone.com
-  BACKEND_B_HOST: backend-b.prod.capstone.com
