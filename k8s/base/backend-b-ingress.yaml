@@ -6,7 +6,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: backend-b.dev.example.com
+  - host: placeholder
     http:
       paths:
       - path: /api/b

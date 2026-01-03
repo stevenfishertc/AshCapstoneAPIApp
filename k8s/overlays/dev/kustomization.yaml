@@ -20,3 +20,25 @@ images:
   - name: backend-b
     newName: acrcapstonedeva1b2c.azurecr.io/backend-b
     newTag: "144"
+
+replacements:
+- source:
+    kind: ConfigMap
+    name: ingress-hosts
+    fieldPath: data.BACKEND_A_HOST
+  targets:
+  - select:
+      kind: Ingress
+      name: backend-a-ingress
+    fieldPaths:
+    - spec.rules.0.host
+- source:
+    kind: ConfigMap
+    name: ingress-hosts
+    fieldPath: data.BACKEND_B_HOST
+  targets:
+  - select:
+      kind: Ingress
+      name: backend-b-ingress
+    fieldPaths:
+    - spec.rules.0.host
