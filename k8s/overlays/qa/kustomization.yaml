@@ -2,7 +2,6 @@ resources:
   - ../../base
   - namespace.yaml
   - configmap-db.yaml
-  - ingress-hosts.yaml
 
 namespace: capstone-backend
 
@@ -43,3 +42,10 @@ replacements:
       name: backend-b-ingress
     fieldPaths:
     - spec.rules.0.host
+
+configMapGenerator:
+- name: ingress-hosts
+  behavior: merge
+  literals:
+  - BACKEND_A_HOST=backend-a.qa.capstone.com
+  - BACKEND_B_HOST=backend-b.qa.capstone.com

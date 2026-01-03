@@ -42,3 +42,10 @@ replacements:
       name: backend-b-ingress
     fieldPaths:
     - spec.rules.0.host
+
+configMapGenerator:
+- name: ingress-hosts
+  behavior: merge
+  literals:
+  - BACKEND_A_HOST=backend-a.dev.capstone.com
+  - BACKEND_B_HOST=backend-b.dev.capstone.com
