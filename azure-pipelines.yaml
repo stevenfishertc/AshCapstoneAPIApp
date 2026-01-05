@@ -84,6 +84,23 @@ stages:
           
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
+          # Wait for ingress controller deployment to be ready
+          echo "Waiting for ingress-nginx controller deployment to be ready..."
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=300s
+
+          # Wait for admission webhook to be ready
+          echo "Waiting for admission webhook to be ready..."
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=available deployment/ingress-nginx-controller \
+            --timeout=300s
+
+          # Give the webhook a bit more time to fully initialize
+          echo "Waiting for webhook endpoints to be available..."
+          sleep 30
+
           # Patch ingress controller to use LoadBalancer instead of NodePort
           kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
 
@@ -184,6 +201,23 @@ stages:
 
                 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
+                # Wait for ingress controller deployment to be ready
+                echo "Waiting for ingress-nginx controller deployment to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=ready pod \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=300s
+
+                # Wait for admission webhook to be ready
+                echo "Waiting for admission webhook to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=available deployment/ingress-nginx-controller \
+                  --timeout=300s
+
+                # Give the webhook a bit more time to fully initialize
+                echo "Waiting for webhook endpoints to be available..."
+                sleep 30
+
                 # Patch ingress controller to use LoadBalancer instead of NodePort
                 kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
 
@@ -283,6 +317,23 @@ stages:
                 kustomize edit set image backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
 
                 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
+
+                # Wait for ingress controller deployment to be ready
+                echo "Waiting for ingress-nginx controller deployment to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=ready pod \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=300s
+
+                # Wait for admission webhook to be ready
+                echo "Waiting for admission webhook to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=available deployment/ingress-nginx-controller \
+                  --timeout=300s
+
+                # Give the webhook a bit more time to fully initialize
+                echo "Waiting for webhook endpoints to be available..."
+                sleep 30
 
                 # Patch ingress controller to use LoadBalancer instead of NodePort
                 kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
