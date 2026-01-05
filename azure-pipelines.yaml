@@ -4,24 +4,14 @@ trigger:
       - main
 
 variables:
-  # ----- Container Registry -----
   DEV_ACR_NAME: acrcapstonedeva1b2c
   QA_ACR_NAME: acrcapstoneqaa1b2c
   PROD_ACR_NAME: acrcapstoneproda1b2c
   ACR_LOGIN_SERVER_SUFFIX: .azurecr.io
   IMAGE_TAG: $(Build.BuildId)
 
-  # Image repos in ACR
-  BACKEND_A_IMAGE: backend-a
-  BACKEND_B_IMAGE: backend-b
-
-  # ----- Service Connections (AzureRM) -----
   AZURE_SUBSCRIPTION: 'stevens-capstone-conn'
-  DEV_SERVICE_CONN: stevens-capstone-dev-conn
-  QA_SERVICE_CONN: stevens-capstone-qa-conn
-  PROD_SERVICE_CONN: stevens-capstone-prod-conn
 
-  # ----- AKS / RG -----
   DEV_RESOURCE_GROUP: steven-rg-capstone-dev
   QA_RESOURCE_GROUP: steven-rg-capstone-qa
   PROD_RESOURCE_GROUP: steven-rg-capstone-prod
@@ -30,22 +20,7 @@ variables:
   QA_AKS_NAME: aks-capstone-qa
   PROD_AKS_NAME: aks-capstone-prod
 
-
-  # ----- Kubernetes -----
   K8S_NAMESPACE: capstone-backend
-  # Adjust if your container listens on a different port
-  CONTAINER_PORT: "8080"
-  REPLICAS: "2"
-
-  # ----- APIM -----
-  DEV_APIM_NAME: apim-capstone-dev-a1b2c
-  QA_APIM_NAME: apim-capstone-qa-a1b2c
-  PROD_APIM_NAME: apim-capstone-prod-a1b2c
-
-  # APIM API IDs (the "api-id" inside APIM). Set these to whatever you use.
-  # If you expose both backends separately in APIM, keep both IDs.
-  APIM_API_ID_A: backend-a
-  APIM_API_ID_B: backend-b
 
 pool:
   vmImage: ubuntu-latest
@@ -97,17 +72,11 @@ stages:
         inlineScript: |
           set -euo pipefail
 
-          # export KUBECONFIG=$HOME/.kube/config
-          # mkdir -p $HOME/.kube
-
           az aks get-credentials \
             --resource-group $(DEV_RESOURCE_GROUP) \
             --name $(DEV_AKS_NAME) \
             --admin \
             --overwrite-existing
-
-          # kubectl config current-context
-          # kubectl get nodes
 
           cd k8s/overlays/dev
           
@@ -115,12 +84,42 @@ stages:
           
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
-          kubectl apply -k .
-          
-          kubectl delete pod -n $(K8S_NAMESPACE) --all
+          # Patch ingress controller to use LoadBalancer instead of NodePort
+          kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
 
-          # kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
-          # kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
+          # Wait for LoadBalancer IP to be assigned
+          echo "Waiting for ingress LoadBalancer IP..."
+          for i in {1..60}; do
+            INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            if [ ! -z "$INGRESS_IP" ]; then
+              echo "Ingress LoadBalancer IP: $INGRESS_IP"
+              break
+            fi
+            echo "Waiting for IP assignment... ($i/60)"
+            sleep 5
+          done
+
+          # Update APIM backends with ingress IP
+          if [ ! -z "$INGRESS_IP" ]; then
+            echo "Updating APIM backend URLs with ingress IP: $INGRESS_IP"
+            az apim api update \
+              --resource-group $(DEV_RESOURCE_GROUP) \
+              --service-name apim-capstone-dev-a1b2c \
+              --api-id backend-a-api \
+              --service-url "http://$INGRESS_IP"
+            az apim api update \
+              --resource-group $(DEV_RESOURCE_GROUP) \
+              --service-name apim-capstone-dev-a1b2c \
+              --api-id backend-b-api \
+              --service-url "http://$INGRESS_IP"
+            echo "APIM backends updated successfully"
+          else
+            echo "Warning: Could not update APIM backends - no ingress IP found"
+          fi
+
+          kubectl apply -k .
+
+          kubectl delete pod -n $(K8S_NAMESPACE) --all
 
 # =========================
 # 2) BUILD AND PUSH TO QA
@@ -173,17 +172,11 @@ stages:
               inlineScript: |
                 set -euo pipefail
 
-                # export KUBECONFIG=$HOME/.kube/config
-                # mkdir -p $HOME/.kube
-
                 az aks get-credentials \
                   --resource-group $(QA_RESOURCE_GROUP) \
                   --name $(QA_AKS_NAME) \
                   --admin \
                   --overwrite-existing
-
-                # kubectl config current-context
-                # kubectl get nodes
 
                 cd k8s/overlays/qa
 
@@ -191,12 +184,42 @@ stages:
 
                 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
-                kubectl apply -k .
-                
-                kubectl delete pod -n $(K8S_NAMESPACE) --all
+                # Patch ingress controller to use LoadBalancer instead of NodePort
+                kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
 
-                # kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
-                # kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
+                # Wait for LoadBalancer IP to be assigned
+                echo "Waiting for ingress LoadBalancer IP..."
+                for i in {1..60}; do
+                  INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                  if [ ! -z "$INGRESS_IP" ]; then
+                    echo "Ingress LoadBalancer IP: $INGRESS_IP"
+                    break
+                  fi
+                  echo "Waiting for IP assignment... ($i/60)"
+                  sleep 5
+                done
+
+                # Update APIM backends with ingress IP
+                if [ ! -z "$INGRESS_IP" ]; then
+                  echo "Updating APIM backend URLs with ingress IP: $INGRESS_IP"
+                  az apim api update \
+                    --resource-group $(QA_RESOURCE_GROUP) \
+                    --service-name apim-capstone-qa-a1b2c \
+                    --api-id backend-a-api \
+                    --service-url "http://$INGRESS_IP"
+                  az apim api update \
+                    --resource-group $(QA_RESOURCE_GROUP) \
+                    --service-name apim-capstone-qa-a1b2c \
+                    --api-id backend-b-api \
+                    --service-url "http://$INGRESS_IP"
+                  echo "APIM backends updated successfully"
+                else
+                  echo "Warning: Could not update APIM backends - no ingress IP found"
+                fi
+
+                kubectl apply -k .
+
+                kubectl delete pod -n $(K8S_NAMESPACE) --all
 
 # =========================
 # 3) BUILD AND PUSH TO PROD
@@ -207,7 +230,7 @@ stages:
   jobs:
   - deployment: DeployProd
     displayName: Deploy backend-a & backend-b to aks-capstone-prod
-    environment: production-env  # typically approvals required here
+    environment: production-env
     strategy:
       runOnce:
         deploy:
@@ -249,27 +272,51 @@ stages:
               inlineScript: |
                 set -euo pipefail
 
-                # export KUBECONFIG=$HOME/.kube/config
-                # mkdir -p $HOME/.kube
-
                 az aks get-credentials \
                   --resource-group $(PROD_RESOURCE_GROUP) \
                   --name $(PROD_AKS_NAME) \
                   --admin \
                   --overwrite-existing
 
-                # kubectl config current-context
-                # kubectl get nodes
-
                 cd k8s/overlays/prod
 
                 kustomize edit set image backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
-                
+
                 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
-                kubectl apply -k .
-                
-                kubectl delete pod -n $(K8S_NAMESPACE) --all
+                # Patch ingress controller to use LoadBalancer instead of NodePort
+                kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
 
-                # kubectl rollout status deployment/backend-a-steven -n $(K8S_NAMESPACE)
-                # kubectl rollout status deployment/backend-b-steven -n $(K8S_NAMESPACE)
+                # Wait for LoadBalancer IP to be assigned
+                echo "Waiting for ingress LoadBalancer IP..."
+                for i in {1..60}; do
+                  INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                  if [ ! -z "$INGRESS_IP" ]; then
+                    echo "Ingress LoadBalancer IP: $INGRESS_IP"
+                    break
+                  fi
+                  echo "Waiting for IP assignment... ($i/60)"
+                  sleep 5
+                done
+
+                # Update APIM backends with ingress IP
+                if [ ! -z "$INGRESS_IP" ]; then
+                  echo "Updating APIM backend URLs with ingress IP: $INGRESS_IP"
+                  az apim api update \
+                    --resource-group $(PROD_RESOURCE_GROUP) \
+                    --service-name apim-capstone-prod-a1b2c \
+                    --api-id backend-a-api \
+                    --service-url "http://$INGRESS_IP"
+                  az apim api update \
+                    --resource-group $(PROD_RESOURCE_GROUP) \
+                    --service-name apim-capstone-prod-a1b2c \
+                    --api-id backend-b-api \
+                    --service-url "http://$INGRESS_IP"
+                  echo "APIM backends updated successfully"
+                else
+                  echo "Warning: Could not update APIM backends - no ingress IP found"
+                fi
+
+                kubectl apply -k .
+
+                kubectl delete pod -n $(K8S_NAMESPACE) --all
