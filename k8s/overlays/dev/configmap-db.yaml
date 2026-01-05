@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: db-config
 data:
-  DB_HOST: appdb.postgres.database.azure.com
+  DB_HOST: psql-capstone-dev-a1b2c.postgres.database.azure.com
   DB_PORT: "5432"
   DB_NAME: appdb
-  DB_USER: stevushka@appdb
+  DB_USER: stevushka
