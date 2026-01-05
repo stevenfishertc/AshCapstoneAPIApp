@@ -79,9 +79,21 @@ stages:
             --overwrite-existing
 
           cd k8s/overlays/dev
-          
+
           kustomize edit set image backend-a=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
-          
+
+          # Wait for at least one node to be ready
+          echo "Waiting for cluster nodes to be ready..."
+          for i in {1..60}; do
+            NODE_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || echo "0")
+            if [ "$NODE_COUNT" -gt 0 ]; then
+              echo "Found $NODE_COUNT ready node(s)"
+              break
+            fi
+            echo "No ready nodes yet, waiting... ($i/60)"
+            sleep 10
+          done
+
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
           # Wait for ingress controller deployment to be ready
@@ -89,7 +101,7 @@ stages:
           kubectl wait --namespace ingress-nginx \
             --for=condition=ready pod \
             --selector=app.kubernetes.io/component=controller \
-            --timeout=300s
+            --timeout=500s
 
           # Wait for admission webhook to be ready
           echo "Waiting for admission webhook to be ready..."
@@ -201,6 +213,18 @@ stages:
 
                 kustomize edit set image backend-a=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
 
+                # Wait for at least one node to be ready
+                echo "Waiting for cluster nodes to be ready..."
+                for i in {1..60}; do
+                  NODE_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || echo "0")
+                  if [ "$NODE_COUNT" -gt 0 ]; then
+                    echo "Found $NODE_COUNT ready node(s)"
+                    break
+                  fi
+                  echo "No ready nodes yet, waiting... ($i/60)"
+                  sleep 10
+                done
+
                 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
                 # Wait for ingress controller deployment to be ready
@@ -208,7 +232,7 @@ stages:
                 kubectl wait --namespace ingress-nginx \
                   --for=condition=ready pod \
                   --selector=app.kubernetes.io/component=controller \
-                  --timeout=300s
+                  --timeout=500s
 
                 # Wait for admission webhook to be ready
                 echo "Waiting for admission webhook to be ready..."
@@ -320,6 +344,18 @@ stages:
 
                 kustomize edit set image backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
 
+                # Wait for at least one node to be ready
+                echo "Waiting for cluster nodes to be ready..."
+                for i in {1..60}; do
+                  NODE_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || echo "0")
+                  if [ "$NODE_COUNT" -gt 0 ]; then
+                    echo "Found $NODE_COUNT ready node(s)"
+                    break
+                  fi
+                  echo "No ready nodes yet, waiting... ($i/60)"
+                  sleep 10
+                done
+
                 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
 
                 # Wait for ingress controller deployment to be ready
@@ -327,7 +363,7 @@ stages:
                 kubectl wait --namespace ingress-nginx \
                   --for=condition=ready pod \
                   --selector=app.kubernetes.io/component=controller \
-                  --timeout=300s
+                  --timeout=500s
 
                 # Wait for admission webhook to be ready
                 echo "Waiting for admission webhook to be ready..."
