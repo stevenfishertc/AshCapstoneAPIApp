@@ -104,6 +104,10 @@ stages:
           # Patch ingress controller to use LoadBalancer instead of NodePort
           kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
 
+          # Deploy backend manifests
+          echo "Deploying backend manifests..."
+          kubectl apply -k .
+
           # Wait for LoadBalancer IP to be assigned
           echo "Waiting for ingress LoadBalancer IP..."
           for i in {1..60}; do
@@ -133,8 +137,6 @@ stages:
           else
             echo "Warning: Could not update APIM backends - no ingress IP found"
           fi
-
-          kubectl apply -k .
 
           kubectl delete pod -n $(K8S_NAMESPACE) --all
 
@@ -221,6 +223,10 @@ stages:
                 # Patch ingress controller to use LoadBalancer instead of NodePort
                 kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
 
+                # Deploy backend manifests
+                echo "Deploying backend manifests..."
+                kubectl apply -k .
+
                 # Wait for LoadBalancer IP to be assigned
                 echo "Waiting for ingress LoadBalancer IP..."
                 for i in {1..60}; do
@@ -250,8 +256,6 @@ stages:
                 else
                   echo "Warning: Could not update APIM backends - no ingress IP found"
                 fi
-
-                kubectl apply -k .
 
                 kubectl delete pod -n $(K8S_NAMESPACE) --all
 
@@ -338,6 +342,10 @@ stages:
                 # Patch ingress controller to use LoadBalancer instead of NodePort
                 kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
 
+                # Deploy backend manifests
+                echo "Deploying backend manifests..."
+                kubectl apply -k .
+
                 # Wait for LoadBalancer IP to be assigned
                 echo "Waiting for ingress LoadBalancer IP..."
                 for i in {1..60}; do
@@ -367,7 +375,5 @@ stages:
                 else
                   echo "Warning: Could not update APIM backends - no ingress IP found"
                 fi
-
-                kubectl apply -k .
 
                 kubectl delete pod -n $(K8S_NAMESPACE) --all
