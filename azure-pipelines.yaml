@@ -123,12 +123,12 @@ stages:
               --resource-group $(DEV_RESOURCE_GROUP) \
               --service-name apim-capstone-dev-a1b2c \
               --api-id backend-a-api \
-              --service-url "http://$INGRESS_IP"
+              --service-url "http://$INGRESS_IP/api/a"
             az apim api update \
               --resource-group $(DEV_RESOURCE_GROUP) \
               --service-name apim-capstone-dev-a1b2c \
               --api-id backend-b-api \
-              --service-url "http://$INGRESS_IP"
+              --service-url "http://$INGRESS_IP/api/b"
             echo "APIM backends updated successfully"
           else
             echo "Warning: Could not update APIM backends - no ingress IP found"
@@ -240,12 +240,12 @@ stages:
                     --resource-group $(QA_RESOURCE_GROUP) \
                     --service-name apim-capstone-qa-a1b2c \
                     --api-id backend-a-api \
-                    --service-url "http://$INGRESS_IP"
+                    --service-url "http://$INGRESS_IP/api/a"
                   az apim api update \
                     --resource-group $(QA_RESOURCE_GROUP) \
                     --service-name apim-capstone-qa-a1b2c \
                     --api-id backend-b-api \
-                    --service-url "http://$INGRESS_IP"
+                    --service-url "http://$INGRESS_IP/api/b"
                   echo "APIM backends updated successfully"
                 else
                   echo "Warning: Could not update APIM backends - no ingress IP found"
@@ -357,12 +357,12 @@ stages:
                     --resource-group $(PROD_RESOURCE_GROUP) \
                     --service-name apim-capstone-prod-a1b2c \
                     --api-id backend-a-api \
-                    --service-url "http://$INGRESS_IP"
+                    --service-url "http://$INGRESS_IP/api/a"
                   az apim api update \
                     --resource-group $(PROD_RESOURCE_GROUP) \
                     --service-name apim-capstone-prod-a1b2c \
                     --api-id backend-b-api \
-                    --service-url "http://$INGRESS_IP"
+                    --service-url "http://$INGRESS_IP/api/b"
                   echo "APIM backends updated successfully"
                 else
                   echo "Warning: Could not update APIM backends - no ingress IP found"
