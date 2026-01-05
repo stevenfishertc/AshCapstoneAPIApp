@@ -7,5 +7,4 @@ resources:
   - backend-b-service.yaml
   - backend-b-hpa.yaml
   - backend-b-ingress.yaml
-  - ingress-hosts.yaml
   - postgres-secret.yaml

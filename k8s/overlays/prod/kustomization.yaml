@@ -20,10 +20,3 @@ images:
   - name: backend-b
     newName: acrcapstoneproda1b2c.azurecr.io/backend-b
     newTag: "144"
-
-configMapGenerator:
-- name: ingress-hosts
-  behavior: merge
-  literals:
-  - BACKEND_A_HOST=backend-a.prod.capstone.com
-  - BACKEND_B_HOST=backend-b.prod.capstone.com

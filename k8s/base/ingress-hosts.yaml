@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ingress-hosts
-  namespace: capstone-backend
-data:
-  BACKEND_A_HOST: backend-a.placeholder.capstone.com
-  BACKEND_B_HOST: backend-b.placeholder.capstone.com
