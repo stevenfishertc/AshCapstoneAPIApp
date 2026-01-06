@@ -32,13 +32,13 @@ pool:
 stages:
 
 # =========================================================
-# BUILD + SAST + IMAGE SCAN
+# SAST - SONARQUBE CODE ANALYSIS
 # =========================================================
-- stage: Build
-  displayName: "SAST + Build + Container Scan + Push"
+- stage: SAST
+  displayName: "SonarQube Code Analysis"
   jobs:
-  - job: BuildAndScan
-    displayName: "Build and Security Scan"
+  - job: SonarQubeAnalysis
+    displayName: "Static Code Analysis"
     steps:
     - checkout: self
 
@@ -202,6 +202,19 @@ stages:
       displayName: "Run SonarQube Analysis (Node.js)"
       continueOnError: true
 
+# =========================================================
+# BUILD AND PUSH DOCKER IMAGES
+# =========================================================
+- stage: Build
+  displayName: "Build Docker Images"
+  dependsOn: SAST
+  condition: succeededOrFailed()
+  jobs:
+  - job: BuildImages
+    displayName: "Build and Push Container Images"
+    steps:
+    - checkout: self
+
     # ---------- LOGIN TO DEV ACR ----------
     - task: AzureCLI@2
       displayName: "Azure Login ACR (DEV)"
@@ -220,60 +233,6 @@ stages:
         docker build -f backend-b/Dockerfile \
           -t backend-b-local backend-b
       displayName: "Build Docker Images"
-
-    # ---------- INSTALL TRIVY ----------
-    - script: |
-        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update
-        sudo apt-get install trivy -y
-      displayName: "Install Trivy"
-
-    # ---------- DOWNLOAD TRIVY HTML TEMPLATE ----------
-    - script: |
-        curl -sSL -o html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/v0.48.0/contrib/html.tpl
-      displayName: "Download Trivy HTML template"
-
-    # ---------- TRIVY HTML REPORT - BACKEND A ----------
-    - script: |
-        trivy image \
-          --format template \
-          --template "@html.tpl" \
-          --output trivy-backend-a.html \
-          backend-a-local
-      displayName: "Generate Trivy HTML Report - Backend A"
-
-    # ---------- TRIVY HTML REPORT - BACKEND B ----------
-    - script: |
-        trivy image \
-          --format template \
-          --template "@html.tpl" \
-          --output trivy-backend-b.html \
-          backend-b-local
-      displayName: "Generate Trivy HTML Report - Backend B"
-
-    # ---------- FAIL PIPELINE IF CRITICAL/HIGH ----------
-    - script: |
-        trivy image --severity CRITICAL,HIGH --exit-code 1 backend-a-local || echo "Backend A has vulnerabilities"
-        trivy image --severity CRITICAL,HIGH --exit-code 1 backend-b-local || echo "Backend B has vulnerabilities"
-      displayName: "Fail Build if High/Critical CVEs Found"
-      continueOnError: true
-
-    # ---------- COPY AND PUBLISH TRIVY REPORTS ----------
-    - script: |
-        mkdir -p $(Build.ArtifactStagingDirectory)/trivy-reports
-        cp trivy-backend-a.html $(Build.ArtifactStagingDirectory)/trivy-reports/ || echo "Backend A report not found"
-        cp trivy-backend-b.html $(Build.ArtifactStagingDirectory)/trivy-reports/ || echo "Backend B report not found"
-      displayName: "Copy Trivy Reports to Staging"
-      condition: succeededOrFailed()
-
-    - task: PublishBuildArtifacts@1
-      displayName: "Publish Trivy HTML Reports"
-      inputs:
-        PathtoPublish: "$(Build.ArtifactStagingDirectory)/trivy-reports"
-        ArtifactName: "trivy-reports"
-        publishLocation: "Container"
-      condition: succeededOrFailed()
 
     # ---------- TAG AND PUSH TO DEV ACR ----------
     - script: |
@@ -317,12 +276,95 @@ stages:
           docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
 
 # =========================================================
+# CONTAINER SECURITY SCAN - TRIVY
+# =========================================================
+- stage: ContainerScan
+  displayName: "Trivy Container Vulnerability Scan"
+  dependsOn: Build
+  condition: succeededOrFailed()
+  jobs:
+  - job: TrivyScan
+    displayName: "Scan Container Images"
+    steps:
+    - checkout: self
+
+    # ---------- LOGIN TO DEV ACR ----------
+    - task: AzureCLI@2
+      displayName: "Azure Login ACR (DEV)"
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az acr login --name $(DEV_ACR_NAME)
+
+    # ---------- PULL IMAGES FROM ACR ----------
+    - script: |
+        docker pull $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+        docker pull $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+      displayName: "Pull Images from DEV ACR"
+
+    # ---------- INSTALL TRIVY ----------
+    - script: |
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy -y
+      displayName: "Install Trivy"
+
+    # ---------- DOWNLOAD TRIVY HTML TEMPLATE ----------
+    - script: |
+        curl -sSL -o html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/v0.48.0/contrib/html.tpl
+      displayName: "Download Trivy HTML template"
+
+    # ---------- TRIVY HTML REPORT - BACKEND A ----------
+    - script: |
+        trivy image \
+          --format template \
+          --template "@html.tpl" \
+          --output trivy-backend-a.html \
+          $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+      displayName: "Generate Trivy HTML Report - Backend A"
+
+    # ---------- TRIVY HTML REPORT - BACKEND B ----------
+    - script: |
+        trivy image \
+          --format template \
+          --template "@html.tpl" \
+          --output trivy-backend-b.html \
+          $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+      displayName: "Generate Trivy HTML Report - Backend B"
+
+    # ---------- FAIL PIPELINE IF CRITICAL/HIGH ----------
+    - script: |
+        trivy image --severity CRITICAL,HIGH --exit-code 1 $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) || echo "Backend A has vulnerabilities"
+        trivy image --severity CRITICAL,HIGH --exit-code 1 $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG) || echo "Backend B has vulnerabilities"
+      displayName: "Fail Build if High/Critical CVEs Found"
+      continueOnError: true
+
+    # ---------- COPY AND PUBLISH TRIVY REPORTS ----------
+    - script: |
+        mkdir -p $(Build.ArtifactStagingDirectory)/trivy-reports
+        cp trivy-backend-a.html $(Build.ArtifactStagingDirectory)/trivy-reports/ || echo "Backend A report not found"
+        cp trivy-backend-b.html $(Build.ArtifactStagingDirectory)/trivy-reports/ || echo "Backend B report not found"
+      displayName: "Copy Trivy Reports to Staging"
+      condition: succeededOrFailed()
+
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish Trivy HTML Reports"
+      inputs:
+        PathtoPublish: "$(Build.ArtifactStagingDirectory)/trivy-reports"
+        ArtifactName: "trivy-reports"
+        publishLocation: "Container"
+      condition: succeededOrFailed()
+
+# =========================================================
 # DEV
 # =========================================================
 - stage: Dev
   displayName: "Deploy to Development"
-  dependsOn: Build
-  condition: succeeded()
+  dependsOn: ContainerScan
+  condition: succeededOrFailed()
   jobs:
   - deployment: DeployDev
     displayName: "Deploy to DEV AKS"
