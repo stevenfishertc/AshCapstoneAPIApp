@@ -68,6 +68,7 @@ stages:
               --namespace sonarqube \
               --set service.type=LoadBalancer \
               --set postgresql.enabled=true \
+              --set monitoringPasscode=admin123 \
               --wait --timeout=10m
             echo "SonarQube deployed successfully"
           else
@@ -90,10 +91,35 @@ stages:
           if [ ! -z "$SONARQUBE_IP" ]; then
             SONARQUBE_URL="http://$SONARQUBE_IP:9000"
             echo "SonarQube URL: $SONARQUBE_URL"
+
+            # Wait for SonarQube to be fully ready
+            echo "Waiting for SonarQube to be fully ready..."
+            for i in {1..30}; do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $SONARQUBE_URL/api/system/status || echo "000")
+              if [ "$HTTP_CODE" == "200" ]; then
+                echo "SonarQube is ready"
+                break
+              fi
+              echo "SonarQube not ready yet (HTTP $HTTP_CODE), waiting... ($i/30)"
+              sleep 10
+            done
+
+            # Generate SonarQube token for pipeline
+            echo "Generating SonarQube token..."
+            SONAR_TOKEN=$(curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/user_tokens/generate?name=pipeline-token" | grep -o '"token":"[^"]*' | cut -d'"' -f4 || echo "")
+            if [ -z "$SONAR_TOKEN" ]; then
+              echo "Could not generate token, will try with admin credentials"
+              SONAR_TOKEN="admin:admin"
+            else
+              echo "SonarQube token generated successfully"
+            fi
+
             echo "##vso[task.setvariable variable=SONARQUBE_URL]$SONARQUBE_URL"
+            echo "##vso[task.setvariable variable=SONAR_TOKEN;issecret=true]$SONAR_TOKEN"
           else
             echo "Warning: Could not get SonarQube IP"
             echo "##vso[task.setvariable variable=SONARQUBE_URL]"
+            echo "##vso[task.setvariable variable=SONAR_TOKEN;issecret=true]"
           fi
 
     # ---------- RUN SONARQUBE SCAN ----------
@@ -104,17 +130,34 @@ stages:
         fi
 
         echo "Running SonarQube analysis for Node.js..."
-        docker run --rm \
-          -e SONAR_HOST_URL=$(SONARQUBE_URL) \
-          -e SONAR_LOGIN=admin \
-          -e SONAR_PASSWORD=admin \
-          -v $(System.DefaultWorkingDirectory):/usr/src \
-          sonarsource/sonar-scanner-cli:latest \
-          -Dsonar.projectKey=$(SONARQUBE_PROJECT_KEY) \
-          -Dsonar.projectName="$(SONARQUBE_PROJECT_NAME)" \
-          -Dsonar.sources=backend-a,backend-b \
-          -Dsonar.exclusions=**/node_modules/**,**/*.spec.js,**/*.test.js \
-          -Dsonar.javascript.node.maxspace=4096 || echo "SonarQube scan failed, continuing..."
+
+        # Check if token contains colon (fallback to user:pass format)
+        if [[ "$(SONAR_TOKEN)" == *":"* ]]; then
+          echo "Using admin credentials (token generation failed)"
+          docker run --rm \
+            -e SONAR_HOST_URL=$(SONARQUBE_URL) \
+            -e SONAR_LOGIN=admin \
+            -e SONAR_PASSWORD=admin \
+            -v $(System.DefaultWorkingDirectory):/usr/src \
+            sonarsource/sonar-scanner-cli:latest \
+            -Dsonar.projectKey=$(SONARQUBE_PROJECT_KEY) \
+            -Dsonar.projectName="$(SONARQUBE_PROJECT_NAME)" \
+            -Dsonar.sources=backend-a,backend-b \
+            -Dsonar.exclusions=**/node_modules/**,**/*.spec.js,**/*.test.js \
+            -Dsonar.javascript.node.maxspace=4096 || echo "SonarQube scan failed, continuing..."
+        else
+          echo "Using SonarQube token"
+          docker run --rm \
+            -e SONAR_HOST_URL=$(SONARQUBE_URL) \
+            -e SONAR_TOKEN=$(SONAR_TOKEN) \
+            -v $(System.DefaultWorkingDirectory):/usr/src \
+            sonarsource/sonar-scanner-cli:latest \
+            -Dsonar.projectKey=$(SONARQUBE_PROJECT_KEY) \
+            -Dsonar.projectName="$(SONARQUBE_PROJECT_NAME)" \
+            -Dsonar.sources=backend-a,backend-b \
+            -Dsonar.exclusions=**/node_modules/**,**/*.spec.js,**/*.test.js \
+            -Dsonar.javascript.node.maxspace=4096 || echo "SonarQube scan failed, continuing..."
+        fi
       displayName: "Run SonarQube Analysis (Node.js)"
       continueOnError: true
 
@@ -177,9 +220,18 @@ stages:
     - task: PublishBuildArtifacts@1
       displayName: "Publish Trivy HTML Reports"
       inputs:
-        PathtoPublish: "$(System.DefaultWorkingDirectory)"
+        PathtoPublish: "$(System.DefaultWorkingDirectory)/"
         ArtifactName: "trivy-reports"
         publishLocation: "Container"
+      condition: succeededOrFailed()
+
+    # Only publish the HTML files specifically
+    - script: |
+        mkdir -p $(Build.ArtifactStagingDirectory)/trivy-reports
+        cp trivy-backend-a.html $(Build.ArtifactStagingDirectory)/trivy-reports/ || echo "Backend A report not found"
+        cp trivy-backend-b.html $(Build.ArtifactStagingDirectory)/trivy-reports/ || echo "Backend B report not found"
+      displayName: "Copy Trivy Reports to Staging"
+      condition: succeededOrFailed()
 
     # ---------- TAG AND PUSH TO DEV ACR ----------
     - script: |
