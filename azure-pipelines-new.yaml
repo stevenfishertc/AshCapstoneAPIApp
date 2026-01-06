@@ -155,6 +155,34 @@ stages:
               echo "SonarQube token generated successfully"
             fi
 
+            # Configure custom quality gate
+            echo "Configuring custom quality gate..."
+
+            # Create custom quality gate if it doesn't exist
+            QG_NAME="steven-custom-gate"
+            QG_ID=$(curl -s -u admin:admin "$SONARQUBE_URL/api/qualitygates/list" | grep -o "\"id\":[0-9]*,\"name\":\"$QG_NAME\"" | grep -o "\"id\":[0-9]*" | cut -d':' -f2 || echo "")
+
+            if [ -z "$QG_ID" ]; then
+              echo "Creating custom quality gate..."
+              QG_ID=$(curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/qualitygates/create?name=$QG_NAME" | grep -o '"id":[0-9]*' | cut -d':' -f2)
+
+              # Set conditions: Block on major bugs/vulnerabilities, ignore coverage
+              echo "Setting quality gate conditions..."
+
+              # Add condition: Major Bugs > 0 = FAIL
+              curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/qualitygates/create_condition?gateId=$QG_ID&metric=major_violations&op=GT&error=0" > /dev/null
+
+              # Add condition: Vulnerabilities > 0 = FAIL
+              curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/qualitygates/create_condition?gateId=$QG_ID&metric=vulnerabilities&op=GT&error=0" > /dev/null
+
+              # Set as default gate
+              curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/qualitygates/set_as_default?id=$QG_ID" > /dev/null
+
+              echo "Custom quality gate created and set as default (ID: $QG_ID)"
+            else
+              echo "Custom quality gate already exists (ID: $QG_ID)"
+            fi
+
             echo "##vso[task.setvariable variable=SONARQUBE_URL]$SONARQUBE_URL"
             echo "##vso[task.setvariable variable=SONAR_TOKEN;issecret=true]$SONAR_TOKEN"
           else
@@ -201,6 +229,68 @@ stages:
         fi
       displayName: "Run SonarQube Analysis (Node.js)"
       continueOnError: true
+
+    # ---------- WAIT FOR QUALITY GATE ----------
+    - script: |
+        if [ -z "$(SONARQUBE_URL)" ]; then
+          echo "SonarQube URL not available, skipping quality gate"
+          exit 0
+        fi
+
+        echo "Waiting for SonarQube analysis to complete..."
+        sleep 10
+
+        # Get the task ID from the analysis
+        TASK_URL=$(curl -s -u admin:admin "$(SONARQUBE_URL)/api/ce/component?component=$(SONARQUBE_PROJECT_KEY)" | grep -o '"key":"[^"]*' | head -1 | cut -d'"' -f4)
+
+        if [ -z "$TASK_URL" ]; then
+          echo "Could not find analysis task, skipping quality gate"
+          exit 0
+        fi
+
+        echo "Analysis task: $TASK_URL"
+
+        # Wait for analysis to complete
+        for i in {1..30}; do
+          TASK_STATUS=$(curl -s -u admin:admin "$(SONARQUBE_URL)/api/ce/task?id=$TASK_URL" | grep -o '"status":"[^"]*' | cut -d'"' -f4)
+
+          if [ "$TASK_STATUS" == "SUCCESS" ]; then
+            echo "Analysis completed successfully"
+            break
+          elif [ "$TASK_STATUS" == "FAILED" ] || [ "$TASK_STATUS" == "CANCELED" ]; then
+            echo "Analysis failed or was canceled"
+            exit 0
+          fi
+
+          echo "Analysis status: $TASK_STATUS, waiting... ($i/30)"
+          sleep 10
+        done
+
+        # Check quality gate status
+        echo "Checking quality gate status..."
+        QG_STATUS=$(curl -s -u admin:admin "$(SONARQUBE_URL)/api/qualitygates/project_status?projectKey=$(SONARQUBE_PROJECT_KEY)" | grep -o '"status":"[^"]*' | cut -d'"' -f4)
+
+        echo "Quality Gate Status: $QG_STATUS"
+
+        if [ "$QG_STATUS" == "ERROR" ]; then
+          echo "##vso[task.logissue type=error]Quality gate FAILED - Code contains major errors or vulnerabilities"
+          # Get detailed metrics
+          DETAILS=$(curl -s -u admin:admin "$(SONARQUBE_URL)/api/qualitygates/project_status?projectKey=$(SONARQUBE_PROJECT_KEY)")
+          echo "$DETAILS"
+
+          # Extract and display failed conditions
+          echo ""
+          echo "Failed conditions:"
+          echo "$DETAILS" | grep -o '"metricKey":"[^"]*","comparator":"[^"]*","errorThreshold":"[^"]*","actualValue":"[^"]*","status":"ERROR"' || echo "Could not parse failed conditions"
+
+          exit 1
+        elif [ "$QG_STATUS" == "OK" ]; then
+          echo "Quality gate PASSED - No major errors found"
+        else
+          echo "Quality gate status unknown or not available"
+        fi
+      displayName: "Check SonarQube Quality Gate"
+      continueOnError: false
 
 # =========================================================
 # BUILD AND PUSH DOCKER IMAGES
