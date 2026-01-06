@@ -75,14 +75,19 @@ stages:
             # Wait for cleanup
             sleep 10
 
-            # Install fresh with custom release name and override fullnameOverride
+            # Install fresh with custom release name, lighter resources, and H2 database (faster startup)
             helm install sonarqube-steven sonarqube/sonarqube \
               --namespace sonarqube \
               --set fullnameOverride=sonarqube-steven \
               --set service.type=LoadBalancer \
-              --set postgresql.enabled=true \
+              --set postgresql.enabled=false \
+              --set jdbcOverwrite.enable=false \
               --set monitoringPasscode=admin123 \
-              --set community.enabled=true
+              --set community.enabled=true \
+              --set resources.requests.memory=1Gi \
+              --set resources.requests.cpu=500m \
+              --set resources.limits.memory=2Gi \
+              --set resources.limits.cpu=1000m
 
             # Wait for StatefulSet to be ready (fullnameOverride sets it to sonarqube-steven)
             echo "Waiting for SonarQube StatefulSet to be ready..."
@@ -117,15 +122,26 @@ stages:
             SONARQUBE_URL="http://$SONARQUBE_IP:9000"
             echo "SonarQube URL: $SONARQUBE_URL"
 
+            # Check pod status for debugging
+            echo "Checking SonarQube pod status..."
+            kubectl get pods -n sonarqube
+            kubectl describe pod -n sonarqube -l app=sonarqube | tail -50
+
             # Wait for SonarQube to be fully ready
             echo "Waiting for SonarQube to be fully ready..."
             for i in {1..30}; do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $SONARQUBE_URL/api/system/status || echo "000")
-              if [ "$HTTP_CODE" == "200" ]; then
-                echo "SonarQube is ready"
-                break
+              # Check if we can reach the IP at all
+              if ! curl -s --connect-timeout 5 --max-time 10 $SONARQUBE_URL/api/system/status > /dev/null 2>&1; then
+                echo "SonarQube not reachable yet, checking pod status... ($i/30)"
+                kubectl get pods -n sonarqube -l app=sonarqube
+              else
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 $SONARQUBE_URL/api/system/status)
+                if [ "$HTTP_CODE" == "200" ]; then
+                  echo "SonarQube is ready"
+                  break
+                fi
+                echo "SonarQube responding but not ready (HTTP $HTTP_CODE), waiting... ($i/30)"
               fi
-              echo "SonarQube not ready yet (HTTP $HTTP_CODE), waiting... ($i/30)"
               sleep 10
             done
 
