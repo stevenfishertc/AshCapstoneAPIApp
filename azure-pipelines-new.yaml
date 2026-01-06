@@ -58,17 +58,20 @@ stages:
             --admin \
             --overwrite-existing
 
+          # Add/update Helm repo
+          helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+          helm repo update
+
           # Deploy SonarQube using Helm if not already deployed
           if ! helm list -n sonarqube 2>/dev/null | grep -q sonarqube; then
             echo "Deploying SonarQube using Helm..."
-            helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
-            helm repo update
             kubectl create namespace sonarqube --dry-run=client -o yaml | kubectl apply -f -
             helm upgrade --install sonarqube sonarqube/sonarqube \
               --namespace sonarqube \
               --set service.type=LoadBalancer \
               --set postgresql.enabled=true \
               --set monitoringPasscode=admin123 \
+              --set community.enabled=true \
               --wait --timeout=10m
             echo "SonarQube deployed successfully"
           else
@@ -139,7 +142,7 @@ stages:
             -e SONAR_LOGIN=admin \
             -e SONAR_PASSWORD=admin \
             -v $(System.DefaultWorkingDirectory):/usr/src \
-            sonarsource/sonar-scanner-cli:latest \
+            sonarsource/sonar-scanner-cli:5.0 \
             -Dsonar.projectKey=$(SONARQUBE_PROJECT_KEY) \
             -Dsonar.projectName="$(SONARQUBE_PROJECT_NAME)" \
             -Dsonar.sources=backend-a,backend-b \
@@ -151,7 +154,7 @@ stages:
             -e SONAR_HOST_URL=$(SONARQUBE_URL) \
             -e SONAR_TOKEN=$(SONAR_TOKEN) \
             -v $(System.DefaultWorkingDirectory):/usr/src \
-            sonarsource/sonar-scanner-cli:latest \
+            sonarsource/sonar-scanner-cli:5.0 \
             -Dsonar.projectKey=$(SONARQUBE_PROJECT_KEY) \
             -Dsonar.projectName="$(SONARQUBE_PROJECT_NAME)" \
             -Dsonar.sources=backend-a,backend-b \
@@ -182,13 +185,15 @@ stages:
 
     # ---------- INSTALL TRIVY ----------
     - script: |
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-          | sh -s -- -b /usr/local/bin
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy -y
       displayName: "Install Trivy"
 
     # ---------- DOWNLOAD TRIVY HTML TEMPLATE ----------
     - script: |
-        curl -sSL -o html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+        curl -sSL -o html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/v0.48.0/contrib/html.tpl
       displayName: "Download Trivy HTML template"
 
     # ---------- TRIVY HTML REPORT - BACKEND A ----------
@@ -216,21 +221,20 @@ stages:
       displayName: "Fail Build if High/Critical CVEs Found"
       continueOnError: true
 
-    # ---------- PUBLISH HTML DASHBOARDS ----------
-    - task: PublishBuildArtifacts@1
-      displayName: "Publish Trivy HTML Reports"
-      inputs:
-        PathtoPublish: "$(System.DefaultWorkingDirectory)/"
-        ArtifactName: "trivy-reports"
-        publishLocation: "Container"
-      condition: succeededOrFailed()
-
-    # Only publish the HTML files specifically
+    # ---------- COPY AND PUBLISH TRIVY REPORTS ----------
     - script: |
         mkdir -p $(Build.ArtifactStagingDirectory)/trivy-reports
         cp trivy-backend-a.html $(Build.ArtifactStagingDirectory)/trivy-reports/ || echo "Backend A report not found"
         cp trivy-backend-b.html $(Build.ArtifactStagingDirectory)/trivy-reports/ || echo "Backend B report not found"
       displayName: "Copy Trivy Reports to Staging"
+      condition: succeededOrFailed()
+
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish Trivy HTML Reports"
+      inputs:
+        PathtoPublish: "$(Build.ArtifactStagingDirectory)/trivy-reports"
+        ArtifactName: "trivy-reports"
+        publishLocation: "Container"
       condition: succeededOrFailed()
 
     # ---------- TAG AND PUSH TO DEV ACR ----------
