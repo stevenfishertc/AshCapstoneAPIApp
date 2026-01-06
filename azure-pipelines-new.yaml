@@ -1,0 +1,434 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  DEV_ACR_NAME: acrcapstonedeva1b2c
+  QA_ACR_NAME: acrcapstoneqaa1b2c
+  PROD_ACR_NAME: acrcapstoneproda1b2c
+  ACR_LOGIN_SERVER_SUFFIX: .azurecr.io
+  IMAGE_TAG: $(Build.BuildId)
+
+  AZURE_SUBSCRIPTION: 'stevens-capstone-conn'
+
+  DEV_RESOURCE_GROUP: steven-rg-capstone-dev
+  QA_RESOURCE_GROUP: steven-rg-capstone-qa
+  PROD_RESOURCE_GROUP: steven-rg-capstone-prod
+
+  DEV_AKS_NAME: aks-capstone-dev
+  QA_AKS_NAME: aks-capstone-qa
+  PROD_AKS_NAME: aks-capstone-prod
+
+  K8S_NAMESPACE: capstone-backend
+
+  # SonarQube - will be set after first deployment
+  SONARQUBE_PROJECT_KEY: "steven-capstone-api"
+  SONARQUBE_PROJECT_NAME: "steven-capstone-api"
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+
+# =========================================================
+# BUILD + SAST + IMAGE SCAN
+# =========================================================
+- stage: Build
+  displayName: "SAST + Build + Container Scan + Push"
+  jobs:
+  - job: BuildAndScan
+    displayName: "Build and Security Scan"
+    steps:
+    - checkout: self
+
+    # ---------- DEPLOY SONARQUBE IF NEEDED ----------
+    - task: AzureCLI@2
+      displayName: "Deploy SonarQube (if not exists)"
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -euo pipefail
+
+          az aks get-credentials \
+            --resource-group $(DEV_RESOURCE_GROUP) \
+            --name $(DEV_AKS_NAME) \
+            --admin \
+            --overwrite-existing
+
+          # Deploy SonarQube using Helm if not already deployed
+          if ! helm list -n sonarqube 2>/dev/null | grep -q sonarqube; then
+            echo "Deploying SonarQube using Helm..."
+            helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+            helm repo update
+            kubectl create namespace sonarqube --dry-run=client -o yaml | kubectl apply -f -
+            helm upgrade --install sonarqube sonarqube/sonarqube \
+              --namespace sonarqube \
+              --set service.type=LoadBalancer \
+              --set postgresql.enabled=true \
+              --wait --timeout=10m
+            echo "SonarQube deployed successfully"
+          else
+            echo "SonarQube already deployed"
+          fi
+
+          # Get SonarQube URL
+          SONARQUBE_IP=$(kubectl get svc sonarqube -n sonarqube -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -z "$SONARQUBE_IP" ]; then
+            echo "Waiting for SonarQube LoadBalancer IP..."
+            for i in {1..60}; do
+              SONARQUBE_IP=$(kubectl get svc sonarqube -n sonarqube -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              if [ ! -z "$SONARQUBE_IP" ]; then
+                break
+              fi
+              sleep 5
+            done
+          fi
+
+          if [ ! -z "$SONARQUBE_IP" ]; then
+            SONARQUBE_URL="http://$SONARQUBE_IP:9000"
+            echo "SonarQube URL: $SONARQUBE_URL"
+            echo "##vso[task.setvariable variable=SONARQUBE_URL]$SONARQUBE_URL"
+          else
+            echo "Warning: Could not get SonarQube IP"
+            echo "##vso[task.setvariable variable=SONARQUBE_URL]"
+          fi
+
+    # ---------- RUN SONARQUBE SCAN ----------
+    - script: |
+        if [ -z "$(SONARQUBE_URL)" ]; then
+          echo "SonarQube URL not available, skipping scan"
+          exit 0
+        fi
+
+        echo "Running SonarQube analysis for Node.js..."
+        docker run --rm \
+          -e SONAR_HOST_URL=$(SONARQUBE_URL) \
+          -e SONAR_LOGIN=admin \
+          -e SONAR_PASSWORD=admin \
+          -v $(System.DefaultWorkingDirectory):/usr/src \
+          sonarsource/sonar-scanner-cli:latest \
+          -Dsonar.projectKey=$(SONARQUBE_PROJECT_KEY) \
+          -Dsonar.projectName="$(SONARQUBE_PROJECT_NAME)" \
+          -Dsonar.sources=backend-a,backend-b \
+          -Dsonar.exclusions=**/node_modules/**,**/*.spec.js,**/*.test.js \
+          -Dsonar.javascript.node.maxspace=4096 || echo "SonarQube scan failed, continuing..."
+      displayName: "Run SonarQube Analysis (Node.js)"
+      continueOnError: true
+
+    # ---------- LOGIN TO DEV ACR ----------
+    - task: AzureCLI@2
+      displayName: "Azure Login ACR (DEV)"
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az acr login --name $(DEV_ACR_NAME)
+
+    # ---------- BUILD DOCKER ----------
+    - script: |
+        docker build -f backend-a/Dockerfile \
+          -t backend-a-local backend-a
+
+        docker build -f backend-b/Dockerfile \
+          -t backend-b-local backend-b
+      displayName: "Build Docker Images"
+
+    # ---------- INSTALL TRIVY ----------
+    - script: |
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+          | sh -s -- -b /usr/local/bin
+      displayName: "Install Trivy"
+
+    # ---------- DOWNLOAD TRIVY HTML TEMPLATE ----------
+    - script: |
+        curl -sSL -o html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+      displayName: "Download Trivy HTML template"
+
+    # ---------- TRIVY HTML REPORT - BACKEND A ----------
+    - script: |
+        trivy image \
+          --format template \
+          --template "@html.tpl" \
+          --output trivy-backend-a.html \
+          backend-a-local
+      displayName: "Generate Trivy HTML Report - Backend A"
+
+    # ---------- TRIVY HTML REPORT - BACKEND B ----------
+    - script: |
+        trivy image \
+          --format template \
+          --template "@html.tpl" \
+          --output trivy-backend-b.html \
+          backend-b-local
+      displayName: "Generate Trivy HTML Report - Backend B"
+
+    # ---------- FAIL PIPELINE IF CRITICAL/HIGH ----------
+    - script: |
+        trivy image --severity CRITICAL,HIGH --exit-code 1 backend-a-local || echo "Backend A has vulnerabilities"
+        trivy image --severity CRITICAL,HIGH --exit-code 1 backend-b-local || echo "Backend B has vulnerabilities"
+      displayName: "Fail Build if High/Critical CVEs Found"
+      continueOnError: true
+
+    # ---------- PUBLISH HTML DASHBOARDS ----------
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish Trivy HTML Reports"
+      inputs:
+        PathtoPublish: "$(System.DefaultWorkingDirectory)"
+        ArtifactName: "trivy-reports"
+        publishLocation: "Container"
+
+    # ---------- TAG AND PUSH TO DEV ACR ----------
+    - script: |
+        docker tag backend-a-local $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+        docker tag backend-b-local $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+
+        docker push $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+        docker push $(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+      displayName: "Push Images to DEV ACR"
+
+    # ---------- TAG AND PUSH TO QA ACR ----------
+    - task: AzureCLI@2
+      displayName: "Push to QA ACR"
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az acr login --name $(QA_ACR_NAME)
+
+          docker tag backend-a-local $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+          docker tag backend-b-local $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+
+          docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+          docker push $(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+
+    # ---------- TAG AND PUSH TO PROD ACR ----------
+    - task: AzureCLI@2
+      displayName: "Push to PROD ACR"
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az acr login --name $(PROD_ACR_NAME)
+
+          docker tag backend-a-local $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+          docker tag backend-b-local $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+
+          docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG)
+          docker push $(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+
+# =========================================================
+# DEV
+# =========================================================
+- stage: Dev
+  displayName: "Deploy to Development"
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - deployment: DeployDev
+    displayName: "Deploy to DEV AKS"
+    environment: dev-env
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: "Deploy to DEV AKS"
+            inputs:
+              azureSubscription: $(AZURE_SUBSCRIPTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                az aks get-credentials \
+                  --resource-group $(DEV_RESOURCE_GROUP) \
+                  --name $(DEV_AKS_NAME) \
+                  --admin \
+                  --overwrite-existing
+
+                # Wait for at least one node to be ready
+                echo "Waiting for cluster nodes to be ready..."
+                for i in {1..60}; do
+                  NODE_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || echo "0")
+                  if [ "$NODE_COUNT" -gt 0 ]; then
+                    echo "Found $NODE_COUNT ready node(s)"
+                    break
+                  fi
+                  echo "No ready nodes yet, waiting... ($i/60)"
+                  sleep 10
+                done
+
+                kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
+
+                # Wait for ingress controller deployment to be ready
+                echo "Waiting for ingress-nginx controller deployment to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=ready pod \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=500s
+
+                # Patch ingress controller to use LoadBalancer
+                kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
+
+                cd k8s/overlays/dev
+                kustomize edit set image backend-a=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+
+                # Deploy backend manifests
+                kubectl apply -k .
+
+                # Wait for LoadBalancer IP
+                echo "Waiting for ingress LoadBalancer IP..."
+                for i in {1..60}; do
+                  INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                  if [ ! -z "$INGRESS_IP" ]; then
+                    echo "Ingress LoadBalancer IP: $INGRESS_IP"
+                    break
+                  fi
+                  sleep 5
+                done
+
+                # Update APIM backends
+                if [ ! -z "$INGRESS_IP" ]; then
+                  az apim api update \
+                    --resource-group $(DEV_RESOURCE_GROUP) \
+                    --service-name apim-capstone-dev-a1b2c \
+                    --api-id backend-a-api \
+                    --service-url "http://$INGRESS_IP/api/a"
+                  az apim api update \
+                    --resource-group $(DEV_RESOURCE_GROUP) \
+                    --service-name apim-capstone-dev-a1b2c \
+                    --api-id backend-b-api \
+                    --service-url "http://$INGRESS_IP/api/b"
+                fi
+
+                kubectl delete pod -n $(K8S_NAMESPACE) --all
+
+# =========================================================
+# QA
+# =========================================================
+- stage: QA
+  displayName: "Deploy to QA"
+  dependsOn: Dev
+  condition: succeeded()
+  jobs:
+  - deployment: DeployQA
+    displayName: "Deploy to QA AKS"
+    environment: qa-env
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: "Deploy to QA AKS"
+            inputs:
+              azureSubscription: $(AZURE_SUBSCRIPTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                az aks get-credentials \
+                  --resource-group $(QA_RESOURCE_GROUP) \
+                  --name $(QA_AKS_NAME) \
+                  --admin \
+                  --overwrite-existing
+
+                # Wait for nodes
+                for i in {1..60}; do
+                  NODE_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || echo "0")
+                  if [ "$NODE_COUNT" -gt 0 ]; then
+                    break
+                  fi
+                  sleep 10
+                done
+
+                kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
+                kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=500s
+                kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
+
+                cd k8s/overlays/qa
+                kustomize edit set image backend-a=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+                kubectl apply -k .
+
+                for i in {1..60}; do
+                  INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                  if [ ! -z "$INGRESS_IP" ]; then
+                    az apim api update --resource-group $(QA_RESOURCE_GROUP) --service-name apim-capstone-qa-a1b2c --api-id backend-a-api --service-url "http://$INGRESS_IP/api/a"
+                    az apim api update --resource-group $(QA_RESOURCE_GROUP) --service-name apim-capstone-qa-a1b2c --api-id backend-b-api --service-url "http://$INGRESS_IP/api/b"
+                    break
+                  fi
+                  sleep 5
+                done
+
+                kubectl delete pod -n $(K8S_NAMESPACE) --all
+
+# =========================================================
+# PROD
+# =========================================================
+- stage: Prod
+  displayName: "Deploy to Production"
+  dependsOn: QA
+  condition: succeeded()
+  jobs:
+  - deployment: DeployProd
+    displayName: "Deploy to PROD AKS"
+    environment: production-env
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: "Deploy to PROD AKS"
+            inputs:
+              azureSubscription: $(AZURE_SUBSCRIPTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                az aks get-credentials \
+                  --resource-group $(PROD_RESOURCE_GROUP) \
+                  --name $(PROD_AKS_NAME) \
+                  --admin \
+                  --overwrite-existing
+
+                # Wait for nodes
+                for i in {1..60}; do
+                  NODE_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || echo "0")
+                  if [ "$NODE_COUNT" -gt 0 ]; then
+                    break
+                  fi
+                  sleep 10
+                done
+
+                kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/cloud/deploy.yaml
+                kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=500s
+                kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer"}}'
+
+                cd k8s/overlays/prod
+                kustomize edit set image backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+                kubectl apply -k .
+
+                for i in {1..60}; do
+                  INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                  if [ ! -z "$INGRESS_IP" ]; then
+                    az apim api update --resource-group $(PROD_RESOURCE_GROUP) --service-name apim-capstone-prod-a1b2c --api-id backend-a-api --service-url "http://$INGRESS_IP/api/a"
+                    az apim api update --resource-group $(PROD_RESOURCE_GROUP) --service-name apim-capstone-prod-a1b2c --api-id backend-b-api --service-url "http://$INGRESS_IP/api/b"
+                    break
+                  fi
+                  sleep 5
+                done
+
+                kubectl delete pod -n $(K8S_NAMESPACE) --all
