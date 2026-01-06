@@ -72,10 +72,16 @@ stages:
             helm uninstall sonarqube-steven -n sonarqube 2>/dev/null || echo "No existing release to uninstall"
             helm uninstall sonarqube -n sonarqube 2>/dev/null || echo "No existing release to uninstall"
 
-            # Wait for cleanup
-            sleep 10
+            # Delete stuck PVCs
+            kubectl delete pvc -n sonarqube --all 2>/dev/null || echo "No PVCs to delete"
 
-            # Install fresh with custom release name, lighter resources, and H2 database (faster startup)
+            # Delete stuck pods
+            kubectl delete pod -n sonarqube --all 2>/dev/null || echo "No pods to delete"
+
+            # Wait for cleanup
+            sleep 15
+
+            # Install fresh with custom release name, minimal resources, and H2 database (faster startup)
             helm install sonarqube-steven sonarqube/sonarqube \
               --namespace sonarqube \
               --set fullnameOverride=sonarqube-steven \
@@ -84,10 +90,10 @@ stages:
               --set jdbcOverwrite.enable=false \
               --set monitoringPasscode=admin123 \
               --set community.enabled=true \
-              --set resources.requests.memory=1Gi \
-              --set resources.requests.cpu=500m \
-              --set resources.limits.memory=2Gi \
-              --set resources.limits.cpu=1000m
+              --set resources.requests.memory=512Mi \
+              --set resources.requests.cpu=250m \
+              --set resources.limits.memory=1Gi \
+              --set resources.limits.cpu=500m
 
             # Wait for StatefulSet to be ready (fullnameOverride sets it to sonarqube-steven)
             echo "Waiting for SonarQube StatefulSet to be ready..."
