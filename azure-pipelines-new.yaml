@@ -71,8 +71,22 @@ stages:
               --set service.type=LoadBalancer \
               --set postgresql.enabled=true \
               --set monitoringPasscode=admin123 \
-              --set community.enabled=true \
-              --wait --timeout=10m
+              --set community.enabled=true
+
+            # Wait for PostgreSQL to be ready first
+            echo "Waiting for PostgreSQL to be ready..."
+            kubectl wait --namespace sonarqube \
+              --for=condition=ready pod \
+              --selector=app=postgresql \
+              --timeout=600s || echo "PostgreSQL readiness check timed out, continuing..."
+
+            # Wait for SonarQube pod to be ready
+            echo "Waiting for SonarQube pod to be ready..."
+            kubectl wait --namespace sonarqube \
+              --for=condition=ready pod \
+              --selector=app=sonarqube \
+              --timeout=600s || echo "SonarQube pod readiness check timed out, continuing..."
+
             echo "SonarQube deployed successfully"
           else
             echo "SonarQube already deployed"
