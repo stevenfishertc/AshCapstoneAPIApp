@@ -65,45 +65,47 @@ stages:
           # Check if SonarQube service actually exists (not just Helm release)
           kubectl create namespace sonarqube --dry-run=client -o yaml | kubectl apply -f -
 
-          if ! kubectl get svc sonarqube -n sonarqube 2>/dev/null; then
+          if ! kubectl get svc -n sonarqube -l app=sonarqube 2>/dev/null | grep -q sonarqube; then
             echo "SonarQube service not found, deploying/redeploying..."
 
             # Clean up any failed releases
+            helm uninstall sonarqube-steven -n sonarqube 2>/dev/null || echo "No existing release to uninstall"
             helm uninstall sonarqube -n sonarqube 2>/dev/null || echo "No existing release to uninstall"
 
-            # Install fresh
-            helm install sonarqube sonarqube/sonarqube \
+            # Wait for cleanup
+            sleep 10
+
+            # Install fresh with custom release name and override fullnameOverride
+            helm install sonarqube-steven sonarqube/sonarqube \
               --namespace sonarqube \
+              --set fullnameOverride=sonarqube-steven \
               --set service.type=LoadBalancer \
               --set postgresql.enabled=true \
               --set monitoringPasscode=admin123 \
               --set community.enabled=true
 
-            # Wait for PostgreSQL to be ready first
-            echo "Waiting for PostgreSQL to be ready..."
+            # Wait for StatefulSet to be ready (fullnameOverride sets it to sonarqube-steven)
+            echo "Waiting for SonarQube StatefulSet to be ready..."
             kubectl wait --namespace sonarqube \
-              --for=condition=ready pod \
-              --selector=app=postgresql \
-              --timeout=600s || echo "PostgreSQL readiness check timed out, continuing..."
-
-            # Wait for SonarQube pod to be ready
-            echo "Waiting for SonarQube pod to be ready..."
-            kubectl wait --namespace sonarqube \
-              --for=condition=ready pod \
-              --selector=app=sonarqube \
-              --timeout=600s || echo "SonarQube pod readiness check timed out, continuing..."
+              --for=jsonpath='{.status.readyReplicas}'=1 \
+              statefulset/sonarqube-steven \
+              --timeout=600s || echo "SonarQube StatefulSet not ready yet, continuing..."
 
             echo "SonarQube deployed successfully"
           else
             echo "SonarQube service already exists and is healthy"
           fi
 
-          # Get SonarQube URL
-          SONARQUBE_IP=$(kubectl get svc sonarqube -n sonarqube -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          # Get SonarQube service name (fullnameOverride makes it sonarqube-steven)
+          echo "Discovering SonarQube service..."
+          kubectl get svc -n sonarqube
+
+          # Get SonarQube URL using the correct service name
+          SONARQUBE_IP=$(kubectl get svc sonarqube-steven -n sonarqube -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
           if [ -z "$SONARQUBE_IP" ]; then
             echo "Waiting for SonarQube LoadBalancer IP..."
             for i in {1..60}; do
-              SONARQUBE_IP=$(kubectl get svc sonarqube -n sonarqube -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              SONARQUBE_IP=$(kubectl get svc sonarqube-steven -n sonarqube -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               if [ ! -z "$SONARQUBE_IP" ]; then
                 break
               fi
