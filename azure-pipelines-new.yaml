@@ -355,30 +355,26 @@ stages:
     - script: |
         docker run --rm \
           -v $(Build.ArtifactStagingDirectory):/zap/wrk:rw \
-          ghcr.io/zaproxy/zaproxy:stable zap-api-scan.py \
+          ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
           -t https://apim-capstone-dev-a1b2c.azure-api.net/api/a \
-          -f openapi \
           -r zap-backend-a-report.html \
           -w zap-backend-a-report.md \
           -J zap-backend-a-report.json \
-          -c zap-api-scan-config.conf \
-          || true
-      displayName: "ZAP API Scan - Backend A"
+          -I || true
+      displayName: "ZAP Baseline Scan - Backend A"
       continueOnError: true
 
     # ---------- ZAP API SCAN - BACKEND B ----------
     - script: |
         docker run --rm \
           -v $(Build.ArtifactStagingDirectory):/zap/wrk:rw \
-          ghcr.io/zaproxy/zaproxy:stable zap-api-scan.py \
+          ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
           -t https://apim-capstone-dev-a1b2c.azure-api.net/api/b \
-          -f openapi \
           -r zap-backend-b-report.html \
           -w zap-backend-b-report.md \
           -J zap-backend-b-report.json \
-          -c zap-api-scan-config.conf \
-          || true
-      displayName: "ZAP API Scan - Backend B"
+          -I || true
+      displayName: "ZAP Baseline Scan - Backend B"
       continueOnError: true
 
     # ---------- PUBLISH ZAP REPORTS ----------
