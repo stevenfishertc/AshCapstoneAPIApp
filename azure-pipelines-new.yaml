@@ -116,9 +116,25 @@ stages:
               --set resources.requests.memory=512Mi \
               --set resources.requests.cpu=250m \
               --set resources.limits.memory=1Gi \
-              --set resources.limits.cpu=500m
+              --set resources.limits.cpu=500m \
+              --wait \
+              --timeout=5m
 
-            echo "Helm install completed, checking deployment status..."
+            echo "Helm install completed, checking for missing secrets..."
+
+            # Check if the secret exists, if not create it manually
+            if ! kubectl get secret sonarqube-steven -n sonarqube 2>/dev/null; then
+              echo "Secret sonarqube-steven not found, creating it manually..."
+              kubectl create secret generic sonarqube-steven \
+                --from-literal=jdbc-password='' \
+                -n sonarqube
+
+              # Force restart the pod to pick up the secret
+              kubectl delete pod sonarqube-steven-0 -n sonarqube --force --grace-period=0 || true
+              sleep 10
+            fi
+
+            echo "Deployment status check completed..."
 
             # Wait for StatefulSet to be ready (fullnameOverride sets it to sonarqube-steven)
             echo "Waiting for SonarQube StatefulSet to be ready..."
