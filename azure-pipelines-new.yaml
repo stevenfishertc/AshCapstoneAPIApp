@@ -35,7 +35,7 @@ variables:
 
   # --- SonarCloud SAST Configuration ---
   SONARCLOUD_SERVICE_CONNECTION: 'SonarCloud'
-  SONARCLOUD_ORGANIZATION: "StevenFisher"
+  SONARCLOUD_ORGANIZATION: "stevenfisher"
   SONARCLOUD_PROJECT_KEY: "stevencapstonebackend"
   SONARCLOUD_PROJECT_NAME: "Capstone Backend"
 
