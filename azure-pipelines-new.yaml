@@ -63,7 +63,13 @@ stages:
     - checkout: self
       fetchDepth: 0  # Disable shallow fetch for blame information
 
-    # ---------- STEP 2: PREPARE ANALYSIS CONFIGURATION ----------
+    # ---------- STEP 2: INSTALL DEPENDENCIES FOR SONARCLOUD ----------
+    - script: |
+        cd backend-a && npm install && cd ..
+        cd backend-b && npm install && cd ..
+      displayName: "Install npm dependencies"
+
+    # ---------- STEP 3: PREPARE ANALYSIS CONFIGURATION ----------
     - task: SonarCloudPrepare@4
       displayName: "Prepare Analysis Configuration"
       inputs:
@@ -77,11 +83,11 @@ stages:
         extraProperties: |
           sonar.exclusions=**/node_modules/**,**/*.spec.js,**/*.test.js
 
-    # ---------- STEP 3: RUN CODE ANALYSIS ----------
+    # ---------- STEP 4: RUN CODE ANALYSIS ----------
     - task: SonarCloudAnalyze@4
       displayName: "Run Code Analysis"
 
-    # ---------- STEP 4: PUBLISH QUALITY GATE RESULT ----------
+    # ---------- STEP 5: PUBLISH QUALITY GATE RESULT ----------
     - task: SonarCloudPublish@4
       displayName: "Publish Quality Gate Result"
       inputs:
@@ -354,12 +360,8 @@ stages:
     # ---------- ZAP API SCAN - BACKEND A ----------
     - script: |
         docker run --rm \
-          -v $(Build.ArtifactStagingDirectory):/zap/wrk:rw \
           ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
           -t https://apim-capstone-dev-a1b2c.azure-api.net/api/a \
-          -r zap-backend-a-report.html \
-          -w zap-backend-a-report.md \
-          -J zap-backend-a-report.json \
           -I || true
       displayName: "ZAP Baseline Scan - Backend A"
       continueOnError: true
@@ -367,24 +369,11 @@ stages:
     # ---------- ZAP API SCAN - BACKEND B ----------
     - script: |
         docker run --rm \
-          -v $(Build.ArtifactStagingDirectory):/zap/wrk:rw \
           ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
           -t https://apim-capstone-dev-a1b2c.azure-api.net/api/b \
-          -r zap-backend-b-report.html \
-          -w zap-backend-b-report.md \
-          -J zap-backend-b-report.json \
           -I || true
       displayName: "ZAP Baseline Scan - Backend B"
       continueOnError: true
-
-    # ---------- PUBLISH ZAP REPORTS ----------
-    - task: PublishBuildArtifacts@1
-      displayName: "Publish ZAP Scan Reports"
-      inputs:
-        PathtoPublish: "$(Build.ArtifactStagingDirectory)"
-        ArtifactName: "zap-reports"
-        publishLocation: "Container"
-      condition: succeededOrFailed()
 
 # =========================================================
 # QA
