@@ -334,11 +334,68 @@ stages:
                 kubectl delete pod -n $(K8S_NAMESPACE) --all
 
 # =========================================================
+# DAST - OWASP ZAP API SECURITY SCAN
+# =========================================================
+- stage: DAST
+  displayName: "OWASP ZAP API Security Scan"
+  dependsOn: Dev
+  condition: succeededOrFailed()
+  jobs:
+  - job: ZAPScan
+    displayName: "Dynamic Application Security Testing"
+    steps:
+    - checkout: none
+
+    # ---------- INSTALL OWASP ZAP ----------
+    - script: |
+        docker pull ghcr.io/zaproxy/zaproxy:stable
+      displayName: "Pull OWASP ZAP Docker Image"
+
+    # ---------- ZAP API SCAN - BACKEND A ----------
+    - script: |
+        docker run --rm \
+          -v $(Build.ArtifactStagingDirectory):/zap/wrk:rw \
+          ghcr.io/zaproxy/zaproxy:stable zap-api-scan.py \
+          -t https://apim-capstone-dev-a1b2c.azure-api.net/api/a \
+          -f openapi \
+          -r zap-backend-a-report.html \
+          -w zap-backend-a-report.md \
+          -J zap-backend-a-report.json \
+          -c zap-api-scan-config.conf \
+          || true
+      displayName: "ZAP API Scan - Backend A"
+      continueOnError: true
+
+    # ---------- ZAP API SCAN - BACKEND B ----------
+    - script: |
+        docker run --rm \
+          -v $(Build.ArtifactStagingDirectory):/zap/wrk:rw \
+          ghcr.io/zaproxy/zaproxy:stable zap-api-scan.py \
+          -t https://apim-capstone-dev-a1b2c.azure-api.net/api/b \
+          -f openapi \
+          -r zap-backend-b-report.html \
+          -w zap-backend-b-report.md \
+          -J zap-backend-b-report.json \
+          -c zap-api-scan-config.conf \
+          || true
+      displayName: "ZAP API Scan - Backend B"
+      continueOnError: true
+
+    # ---------- PUBLISH ZAP REPORTS ----------
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish ZAP Scan Reports"
+      inputs:
+        PathtoPublish: "$(Build.ArtifactStagingDirectory)"
+        ArtifactName: "zap-reports"
+        publishLocation: "Container"
+      condition: succeededOrFailed()
+
+# =========================================================
 # QA
 # =========================================================
 - stage: QA
   displayName: "Deploy to QA"
-  dependsOn: Dev
+  dependsOn: DAST
   condition: succeeded()
   jobs:
   - deployment: DeployQA
