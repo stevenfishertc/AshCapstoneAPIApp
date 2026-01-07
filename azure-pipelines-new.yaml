@@ -454,4 +454,3 @@ stages:
                 done
 
                 kubectl delete pod -n $(K8S_NAMESPACE) --all
-
