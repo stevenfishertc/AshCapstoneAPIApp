@@ -72,19 +72,27 @@ stages:
               echo "SonarQube already running and healthy, skipping deployment"
               SKIP_DEPLOY=true
             else
-              echo "SonarQube not healthy, cleaning up for fresh deployment..."
-              # Clean up everything in the namespace
-              helm uninstall sonarqube-steven -n sonarqube 2>/dev/null || echo "No Helm release to uninstall"
-              kubectl delete statefulset --all -n sonarqube 2>/dev/null || true
-              kubectl delete pod --all -n sonarqube 2>/dev/null || true
-              kubectl delete pvc --all -n sonarqube 2>/dev/null || true
-              kubectl delete secret --all -n sonarqube 2>/dev/null || true
-              kubectl delete configmap --all -n sonarqube 2>/dev/null || true
-              kubectl delete svc --all -n sonarqube 2>/dev/null || true
+              echo "SonarQube not healthy, performing complete namespace cleanup..."
 
-              # Wait for cleanup
-              echo "Waiting for cleanup to complete..."
-              sleep 20
+              # Delete the entire namespace to ensure clean state
+              kubectl delete namespace sonarqube --wait=false
+
+              # Wait for namespace to be fully deleted
+              echo "Waiting for namespace deletion..."
+              for i in {1..30}; do
+                if ! kubectl get namespace sonarqube 2>/dev/null; then
+                  echo "Namespace deleted successfully"
+                  break
+                fi
+                echo "Waiting for namespace deletion... ($i/30)"
+                sleep 5
+              done
+
+              # Recreate namespace
+              echo "Creating fresh sonarqube namespace..."
+              kubectl create namespace sonarqube
+              sleep 5
+
               SKIP_DEPLOY=false
             fi
           else
