@@ -1,368 +1,91 @@
+# =========================================================
+# PIPELINE TRIGGER CONFIGURATION
+# =========================================================
 trigger:
   branches:
     include:
       - main
 
+# =========================================================
+# GLOBAL VARIABLES
+# =========================================================
 variables:
+  # --- Azure Service Connection ---
+  AZURE_SUBSCRIPTION: 'stevens-capstone-conn'
+
+  # --- Container Registry Configuration ---
   DEV_ACR_NAME: acrcapstonedeva1b2c
   QA_ACR_NAME: acrcapstoneqaa1b2c
   PROD_ACR_NAME: acrcapstoneproda1b2c
   ACR_LOGIN_SERVER_SUFFIX: .azurecr.io
   IMAGE_TAG: $(Build.BuildId)
 
-  AZURE_SUBSCRIPTION: 'stevens-capstone-conn'
-
+  # --- Resource Groups ---
   DEV_RESOURCE_GROUP: steven-rg-capstone-dev
   QA_RESOURCE_GROUP: steven-rg-capstone-qa
   PROD_RESOURCE_GROUP: steven-rg-capstone-prod
 
+  # --- AKS Cluster Names ---
   DEV_AKS_NAME: aks-capstone-dev
   QA_AKS_NAME: aks-capstone-qa
   PROD_AKS_NAME: aks-capstone-prod
 
+  # --- Kubernetes Configuration ---
   K8S_NAMESPACE: capstone-backend
 
-  # SonarQube - will be set after first deployment
-  SONARQUBE_PROJECT_KEY: "steven-capstone-api"
-  SONARQUBE_PROJECT_NAME: "steven-capstone-api"
+  # --- SonarCloud SAST Configuration ---
+  SONARCLOUD_SERVICE_CONNECTION: 'SonarQube'
+  SONARCLOUD_ORGANIZATION: "StevenFisher"
+  SONARCLOUD_PROJECT_KEY: "stevencapstonebackend"
+  SONARCLOUD_PROJECT_NAME: "Capstone Backend"
 
+# =========================================================
+# BUILD AGENT POOL
+# =========================================================
 pool:
   vmImage: ubuntu-latest
 
+# =========================================================
+# PIPELINE STAGES
+# =========================================================
 stages:
 
 # =========================================================
-# SAST - SONARQUBE CODE ANALYSIS
+# SAST - SONARCLOUD CODE ANALYSIS
 # =========================================================
 - stage: SAST
-  displayName: "SonarQube Code Analysis"
+  displayName: "SonarCloud Code Analysis"
   jobs:
-  - job: SonarQubeAnalysis
+  - job: SonarCloudAnalysis
     displayName: "Static Code Analysis"
     steps:
+    # ---------- STEP 1: SET FETCH DEPTH ----------
     - checkout: self
+      fetchDepth: 0  # Disable shallow fetch for blame information
 
-    # ---------- DEPLOY SONARQUBE IF NEEDED ----------
-    - task: AzureCLI@2
-      displayName: "Deploy SonarQube (if not exists)"
+    # ---------- STEP 2: PREPARE ANALYSIS CONFIGURATION ----------
+    - task: SonarCloudPrepare@2
+      displayName: "Prepare Analysis Configuration"
       inputs:
-        azureSubscription: $(AZURE_SUBSCRIPTION)
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: |
-          set -euo pipefail
+        SonarCloud: $(SONARCLOUD_SERVICE_CONNECTION)
+        organization: $(SONARCLOUD_ORGANIZATION)
+        scannerMode: 'CLI'
+        configMode: 'manual'
+        cliProjectKey: $(SONARCLOUD_PROJECT_KEY)
+        cliProjectName: $(SONARCLOUD_PROJECT_NAME)
+        cliSources: 'backend-a,backend-b'
+        extraProperties: |
+          sonar.exclusions=**/node_modules/**,**/*.spec.js,**/*.test.js
 
-          az aks get-credentials \
-            --resource-group $(DEV_RESOURCE_GROUP) \
-            --name $(DEV_AKS_NAME) \
-            --admin \
-            --overwrite-existing
+    # ---------- STEP 3: RUN CODE ANALYSIS ----------
+    - task: SonarCloudAnalyze@2
+      displayName: "Run Code Analysis"
 
-          # Add/update Helm repo
-          helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
-          helm repo update
-
-          # Ensure clean namespace
-          if kubectl get namespace sonarqube 2>/dev/null; then
-            echo "SonarQube namespace exists, checking for existing deployment..."
-
-            # Check if SonarQube is already running and healthy
-            if kubectl get statefulset sonarqube-steven -n sonarqube 2>/dev/null && \
-               kubectl get pods -n sonarqube -l app=sonarqube --field-selector=status.phase=Running 2>/dev/null | grep -q sonarqube; then
-              echo "SonarQube already running and healthy, skipping deployment"
-              SKIP_DEPLOY=true
-            else
-              echo "SonarQube not healthy, performing complete namespace cleanup..."
-
-              # Force delete PVCs first to avoid finalizer issues
-              echo "Removing PVCs and their finalizers..."
-              kubectl get pvc -n sonarqube -o name 2>/dev/null | while read pvc; do
-                kubectl patch $pvc -n sonarqube -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
-              done
-              kubectl delete pvc --all -n sonarqube --force --grace-period=0 2>/dev/null || true
-
-              # Delete StatefulSet without waiting for pod termination
-              kubectl delete statefulset --all -n sonarqube --force --grace-period=0 2>/dev/null || true
-
-              # Force delete all pods
-              kubectl delete pod --all -n sonarqube --force --grace-period=0 2>/dev/null || true
-
-              # Now delete the namespace
-              kubectl delete namespace sonarqube --wait=false 2>/dev/null || true
-
-              # Wait for namespace to be fully deleted (reduced wait time)
-              echo "Waiting for namespace deletion..."
-              for i in {1..20}; do
-                if ! kubectl get namespace sonarqube 2>/dev/null; then
-                  echo "Namespace deleted successfully"
-                  break
-                fi
-                echo "Waiting for namespace deletion... ($i/20)"
-                sleep 3
-              done
-
-              # If namespace still exists, force remove finalizers
-              if kubectl get namespace sonarqube 2>/dev/null; then
-                echo "Namespace stuck, removing finalizers..."
-                kubectl patch namespace sonarqube -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
-                sleep 5
-              fi
-
-              # Recreate namespace
-              echo "Creating fresh sonarqube namespace..."
-              kubectl create namespace sonarqube
-              sleep 3
-
-              SKIP_DEPLOY=false
-            fi
-          else
-            echo "Creating sonarqube namespace..."
-            kubectl create namespace sonarqube
-            SKIP_DEPLOY=false
-          fi
-
-          if [ "$SKIP_DEPLOY" != "true" ]; then
-            echo "Deploying fresh SonarQube installation..."
-
-            # Install without --wait to avoid timeout, we'll check readiness separately
-            helm install sonarqube-steven sonarqube/sonarqube \
-              --namespace sonarqube \
-              --set fullnameOverride=sonarqube-steven \
-              --set service.type=LoadBalancer \
-              --set postgresql.enabled=false \
-              --set jdbcOverwrite.enable=false \
-              --set monitoringPasscode=admin123 \
-              --set community.enabled=true \
-              --set resources.requests.memory=512Mi \
-              --set resources.requests.cpu=250m \
-              --set resources.limits.memory=1Gi \
-              --set resources.limits.cpu=500m
-
-            echo "Helm install initiated, waiting for resources to be created..."
-            sleep 10
-
-            # Check if the secret exists, if not create it manually
-            if ! kubectl get secret sonarqube-steven -n sonarqube 2>/dev/null; then
-              echo "Secret sonarqube-steven not found, creating it manually..."
-              kubectl create secret generic sonarqube-steven \
-                --from-literal=jdbc-password='' \
-                -n sonarqube
-
-              # Force restart the pod to pick up the secret
-              kubectl delete pod sonarqube-steven-0 -n sonarqube --force --grace-period=0 2>/dev/null || true
-              sleep 5
-            fi
-
-            # Wait for pod to be created and start running
-            echo "Waiting for SonarQube pod to start..."
-            for i in {1..30}; do
-              POD_STATUS=$(kubectl get pod sonarqube-steven-0 -n sonarqube -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
-              if [ "$POD_STATUS" == "Running" ]; then
-                echo "SonarQube pod is running"
-                break
-              elif [ "$POD_STATUS" == "NotFound" ]; then
-                echo "Waiting for pod to be created... ($i/30)"
-              else
-                echo "Pod status: $POD_STATUS, waiting... ($i/30)"
-                # Check for errors
-                kubectl get pod sonarqube-steven-0 -n sonarqube 2>/dev/null || echo "Pod not ready yet"
-              fi
-              sleep 10
-            done
-
-            echo "SonarQube deployment initiated"
-          fi
-
-          # Get SonarQube service name (fullnameOverride makes it sonarqube-steven)
-          echo "Discovering SonarQube service..."
-          kubectl get svc -n sonarqube
-
-          # Get SonarQube URL using the correct service name
-          SONARQUBE_IP=$(kubectl get svc sonarqube-steven -n sonarqube -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-          if [ -z "$SONARQUBE_IP" ]; then
-            echo "Waiting for SonarQube LoadBalancer IP..."
-            for i in {1..60}; do
-              SONARQUBE_IP=$(kubectl get svc sonarqube-steven -n sonarqube -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-              if [ ! -z "$SONARQUBE_IP" ]; then
-                break
-              fi
-              sleep 5
-            done
-          fi
-
-          if [ ! -z "$SONARQUBE_IP" ]; then
-            SONARQUBE_URL="http://$SONARQUBE_IP:9000"
-            echo "SonarQube URL: $SONARQUBE_URL"
-
-            # Check pod status for debugging
-            echo "Checking SonarQube pod status..."
-            kubectl get pods -n sonarqube
-            kubectl describe pod -n sonarqube -l app=sonarqube | tail -50
-
-            # Wait for SonarQube to be fully ready
-            echo "Waiting for SonarQube to be fully ready..."
-            for i in {1..30}; do
-              # Check if we can reach the IP at all
-              if ! curl -s --connect-timeout 5 --max-time 10 $SONARQUBE_URL/api/system/status > /dev/null 2>&1; then
-                echo "SonarQube not reachable yet, checking pod status... ($i/30)"
-                kubectl get pods -n sonarqube -l app=sonarqube
-              else
-                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 $SONARQUBE_URL/api/system/status)
-                if [ "$HTTP_CODE" == "200" ]; then
-                  echo "SonarQube is ready"
-                  break
-                fi
-                echo "SonarQube responding but not ready (HTTP $HTTP_CODE), waiting... ($i/30)"
-              fi
-              sleep 10
-            done
-
-            # Generate SonarQube token for pipeline
-            echo "Generating SonarQube token..."
-            SONAR_TOKEN=$(curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/user_tokens/generate?name=pipeline-token" | grep -o '"token":"[^"]*' | cut -d'"' -f4 || echo "")
-            if [ -z "$SONAR_TOKEN" ]; then
-              echo "Could not generate token, will try with admin credentials"
-              SONAR_TOKEN="admin:admin"
-            else
-              echo "SonarQube token generated successfully"
-            fi
-
-            # Configure custom quality gate
-            echo "Configuring custom quality gate..."
-
-            # Create custom quality gate if it doesn't exist
-            QG_NAME="steven-custom-gate"
-            QG_ID=$(curl -s -u admin:admin "$SONARQUBE_URL/api/qualitygates/list" | grep -o "\"id\":[0-9]*,\"name\":\"$QG_NAME\"" | grep -o "\"id\":[0-9]*" | cut -d':' -f2 || echo "")
-
-            if [ -z "$QG_ID" ]; then
-              echo "Creating custom quality gate..."
-              QG_ID=$(curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/qualitygates/create?name=$QG_NAME" | grep -o '"id":[0-9]*' | cut -d':' -f2)
-
-              # Set conditions: Block on major bugs/vulnerabilities, ignore coverage
-              echo "Setting quality gate conditions..."
-
-              # Add condition: Major Bugs > 0 = FAIL
-              curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/qualitygates/create_condition?gateId=$QG_ID&metric=major_violations&op=GT&error=0" > /dev/null
-
-              # Add condition: Vulnerabilities > 0 = FAIL
-              curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/qualitygates/create_condition?gateId=$QG_ID&metric=vulnerabilities&op=GT&error=0" > /dev/null
-
-              # Set as default gate
-              curl -s -u admin:admin -X POST "$SONARQUBE_URL/api/qualitygates/set_as_default?id=$QG_ID" > /dev/null
-
-              echo "Custom quality gate created and set as default (ID: $QG_ID)"
-            else
-              echo "Custom quality gate already exists (ID: $QG_ID)"
-            fi
-
-            echo "##vso[task.setvariable variable=SONARQUBE_URL]$SONARQUBE_URL"
-            echo "##vso[task.setvariable variable=SONAR_TOKEN;issecret=true]$SONAR_TOKEN"
-          else
-            echo "Warning: Could not get SonarQube IP"
-            echo "##vso[task.setvariable variable=SONARQUBE_URL]"
-            echo "##vso[task.setvariable variable=SONAR_TOKEN;issecret=true]"
-          fi
-
-    # ---------- RUN SONARQUBE SCAN ----------
-    - script: |
-        if [ -z "$(SONARQUBE_URL)" ]; then
-          echo "SonarQube URL not available, skipping scan"
-          exit 0
-        fi
-
-        echo "Running SonarQube analysis for Node.js..."
-
-        # Check if token contains colon (fallback to user:pass format)
-        if [[ "$(SONAR_TOKEN)" == *":"* ]]; then
-          echo "Using admin credentials (token generation failed)"
-          docker run --rm \
-            -e SONAR_HOST_URL=$(SONARQUBE_URL) \
-            -e SONAR_LOGIN=admin \
-            -e SONAR_PASSWORD=admin \
-            -v $(System.DefaultWorkingDirectory):/usr/src \
-            sonarsource/sonar-scanner-cli:5.0 \
-            -Dsonar.projectKey=$(SONARQUBE_PROJECT_KEY) \
-            -Dsonar.projectName="$(SONARQUBE_PROJECT_NAME)" \
-            -Dsonar.sources=backend-a,backend-b \
-            -Dsonar.exclusions=**/node_modules/**,**/*.spec.js,**/*.test.js \
-            -Dsonar.javascript.node.maxspace=4096 || echo "SonarQube scan failed, continuing..."
-        else
-          echo "Using SonarQube token"
-          docker run --rm \
-            -e SONAR_HOST_URL=$(SONARQUBE_URL) \
-            -e SONAR_TOKEN=$(SONAR_TOKEN) \
-            -v $(System.DefaultWorkingDirectory):/usr/src \
-            sonarsource/sonar-scanner-cli:5.0 \
-            -Dsonar.projectKey=$(SONARQUBE_PROJECT_KEY) \
-            -Dsonar.projectName="$(SONARQUBE_PROJECT_NAME)" \
-            -Dsonar.sources=backend-a,backend-b \
-            -Dsonar.exclusions=**/node_modules/**,**/*.spec.js,**/*.test.js \
-            -Dsonar.javascript.node.maxspace=4096 || echo "SonarQube scan failed, continuing..."
-        fi
-      displayName: "Run SonarQube Analysis (Node.js)"
-      continueOnError: true
-
-    # ---------- WAIT FOR QUALITY GATE ----------
-    - script: |
-        if [ -z "$(SONARQUBE_URL)" ]; then
-          echo "SonarQube URL not available, skipping quality gate"
-          exit 0
-        fi
-
-        echo "Waiting for SonarQube analysis to complete..."
-        sleep 10
-
-        # Get the task ID from the analysis
-        TASK_URL=$(curl -s -u admin:admin "$(SONARQUBE_URL)/api/ce/component?component=$(SONARQUBE_PROJECT_KEY)" | grep -o '"key":"[^"]*' | head -1 | cut -d'"' -f4)
-
-        if [ -z "$TASK_URL" ]; then
-          echo "Could not find analysis task, skipping quality gate"
-          exit 0
-        fi
-
-        echo "Analysis task: $TASK_URL"
-
-        # Wait for analysis to complete
-        for i in {1..30}; do
-          TASK_STATUS=$(curl -s -u admin:admin "$(SONARQUBE_URL)/api/ce/task?id=$TASK_URL" | grep -o '"status":"[^"]*' | cut -d'"' -f4)
-
-          if [ "$TASK_STATUS" == "SUCCESS" ]; then
-            echo "Analysis completed successfully"
-            break
-          elif [ "$TASK_STATUS" == "FAILED" ] || [ "$TASK_STATUS" == "CANCELED" ]; then
-            echo "Analysis failed or was canceled"
-            exit 0
-          fi
-
-          echo "Analysis status: $TASK_STATUS, waiting... ($i/30)"
-          sleep 10
-        done
-
-        # Check quality gate status
-        echo "Checking quality gate status..."
-        QG_STATUS=$(curl -s -u admin:admin "$(SONARQUBE_URL)/api/qualitygates/project_status?projectKey=$(SONARQUBE_PROJECT_KEY)" | grep -o '"status":"[^"]*' | cut -d'"' -f4)
-
-        echo "Quality Gate Status: $QG_STATUS"
-
-        if [ "$QG_STATUS" == "ERROR" ]; then
-          echo "##vso[task.logissue type=error]Quality gate FAILED - Code contains major errors or vulnerabilities"
-          # Get detailed metrics
-          DETAILS=$(curl -s -u admin:admin "$(SONARQUBE_URL)/api/qualitygates/project_status?projectKey=$(SONARQUBE_PROJECT_KEY)")
-          echo "$DETAILS"
-
-          # Extract and display failed conditions
-          echo ""
-          echo "Failed conditions:"
-          echo "$DETAILS" | grep -o '"metricKey":"[^"]*","comparator":"[^"]*","errorThreshold":"[^"]*","actualValue":"[^"]*","status":"ERROR"' || echo "Could not parse failed conditions"
-
-          exit 1
-        elif [ "$QG_STATUS" == "OK" ]; then
-          echo "Quality gate PASSED - No major errors found"
-        else
-          echo "Quality gate status unknown or not available"
-        fi
-      displayName: "Check SonarQube Quality Gate"
-      continueOnError: false
+    # ---------- STEP 4: PUBLISH QUALITY GATE RESULT ----------
+    - task: SonarCloudPublish@2
+      displayName: "Publish Quality Gate Result"
+      inputs:
+        pollingTimeoutSec: '300'
 
 # =========================================================
 # BUILD AND PUSH DOCKER IMAGES
