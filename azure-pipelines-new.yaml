@@ -62,24 +62,39 @@ stages:
           helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
           helm repo update
 
-          # Check if SonarQube service actually exists (not just Helm release)
-          kubectl create namespace sonarqube --dry-run=client -o yaml | kubectl apply -f -
+          # Ensure clean namespace
+          if kubectl get namespace sonarqube 2>/dev/null; then
+            echo "SonarQube namespace exists, checking for existing deployment..."
 
-          if ! kubectl get svc -n sonarqube -l app=sonarqube 2>/dev/null | grep -q sonarqube; then
-            echo "SonarQube service not found, deploying/redeploying..."
+            # Check if SonarQube is already running and healthy
+            if kubectl get statefulset sonarqube-steven -n sonarqube 2>/dev/null && \
+               kubectl get pods -n sonarqube -l app=sonarqube --field-selector=status.phase=Running 2>/dev/null | grep -q sonarqube; then
+              echo "SonarQube already running and healthy, skipping deployment"
+              SKIP_DEPLOY=true
+            else
+              echo "SonarQube not healthy, cleaning up for fresh deployment..."
+              # Clean up everything in the namespace
+              helm uninstall sonarqube-steven -n sonarqube 2>/dev/null || echo "No Helm release to uninstall"
+              kubectl delete statefulset --all -n sonarqube 2>/dev/null || true
+              kubectl delete pod --all -n sonarqube 2>/dev/null || true
+              kubectl delete pvc --all -n sonarqube 2>/dev/null || true
+              kubectl delete secret --all -n sonarqube 2>/dev/null || true
+              kubectl delete configmap --all -n sonarqube 2>/dev/null || true
+              kubectl delete svc --all -n sonarqube 2>/dev/null || true
 
-            # Clean up any failed releases
-            helm uninstall sonarqube-steven -n sonarqube 2>/dev/null || echo "No existing release to uninstall"
-            helm uninstall sonarqube -n sonarqube 2>/dev/null || echo "No existing release to uninstall"
+              # Wait for cleanup
+              echo "Waiting for cleanup to complete..."
+              sleep 20
+              SKIP_DEPLOY=false
+            fi
+          else
+            echo "Creating sonarqube namespace..."
+            kubectl create namespace sonarqube
+            SKIP_DEPLOY=false
+          fi
 
-            # Delete stuck PVCs
-            kubectl delete pvc -n sonarqube --all 2>/dev/null || echo "No PVCs to delete"
-
-            # Delete stuck pods
-            kubectl delete pod -n sonarqube --all 2>/dev/null || echo "No pods to delete"
-
-            # Wait for cleanup
-            sleep 15
+          if [ "$SKIP_DEPLOY" != "true" ]; then
+            echo "Deploying fresh SonarQube installation..."
 
             # Install fresh with custom release name, minimal resources, and H2 database (faster startup)
             helm install sonarqube-steven sonarqube/sonarqube \
@@ -95,6 +110,8 @@ stages:
               --set resources.limits.memory=1Gi \
               --set resources.limits.cpu=500m
 
+            echo "Helm install completed, checking deployment status..."
+
             # Wait for StatefulSet to be ready (fullnameOverride sets it to sonarqube-steven)
             echo "Waiting for SonarQube StatefulSet to be ready..."
             kubectl wait --namespace sonarqube \
@@ -103,8 +120,6 @@ stages:
               --timeout=600s || echo "SonarQube StatefulSet not ready yet, continuing..."
 
             echo "SonarQube deployed successfully"
-          else
-            echo "SonarQube service already exists and is healthy"
           fi
 
           # Get SonarQube service name (fullnameOverride makes it sonarqube-steven)
