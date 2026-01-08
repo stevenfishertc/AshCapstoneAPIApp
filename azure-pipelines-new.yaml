@@ -526,6 +526,14 @@ stages:
                 cd k8s/overlays/dev
                 kustomize edit set image backend-a=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(DEV_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
 
+                # Commit updated image tags back to Git (GitOps)
+                echo "Committing updated image tags to Git..."
+                git config user.email "azure-pipeline@capstone.com"
+                git config user.name "Azure Pipeline"
+                git add kustomization.yaml
+                git commit -m "Update DEV image tags to $(IMAGE_TAG) [skip ci]" || echo "No changes to commit"
+                git push origin HEAD:main || echo "Push failed, may need PAT configuration"
+
                 # Deploy backend manifests
                 kubectl apply -k .
 
@@ -643,6 +651,15 @@ stages:
 
                 cd k8s/overlays/qa
                 kustomize edit set image backend-a=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(QA_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+
+                # Commit updated image tags back to Git (GitOps)
+                echo "Committing updated image tags to Git..."
+                git config user.email "azure-pipeline@capstone.com"
+                git config user.name "Azure Pipeline"
+                git add kustomization.yaml
+                git commit -m "Update QA image tags to $(IMAGE_TAG) [skip ci]" || echo "No changes to commit"
+                git push origin HEAD:main || echo "Push failed, may need PAT configuration"
+
                 kubectl apply -k .
 
                 # Deploy ArgoCD Application for continuous GitOps sync
@@ -708,6 +725,15 @@ stages:
 
                 cd k8s/overlays/prod
                 kustomize edit set image backend-a=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-a:$(IMAGE_TAG) backend-b=$(PROD_ACR_NAME)$(ACR_LOGIN_SERVER_SUFFIX)/backend-b:$(IMAGE_TAG)
+
+                # Commit updated image tags back to Git (GitOps)
+                echo "Committing updated image tags to Git..."
+                git config user.email "azure-pipeline@capstone.com"
+                git config user.name "Azure Pipeline"
+                git add kustomization.yaml
+                git commit -m "Update PROD image tags to $(IMAGE_TAG) [skip ci]" || echo "No changes to commit"
+                git push origin HEAD:main || echo "Push failed, may need PAT configuration"
+
                 kubectl apply -k .
 
                 # Deploy ArgoCD Application for continuous GitOps sync
@@ -760,14 +786,17 @@ stages:
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
           helm repo update
 
-          echo "Installing kube-prometheus-stack..."
-          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+          echo "Cleaning up any failed previous installation..."
+          helm uninstall prometheus -n monitoring 2>/dev/null || echo "No previous release to clean up"
+          kubectl delete namespace monitoring --timeout=60s 2>/dev/null || echo "Namespace already clean"
+          sleep 10
+
+          echo "Installing kube-prometheus-stack (this may take 15-20 minutes)..."
+          helm install prometheus prometheus-community/kube-prometheus-stack \
             --namespace monitoring \
             --create-namespace \
             --values monitoring/prometheus-values.yaml \
-            --timeout 20m \
-            --atomic \
-            --cleanup-on-fail
+            --timeout 20m
 
           echo "Waiting for Grafana pods to be ready..."
           kubectl wait --for=condition=ready pod \
@@ -812,7 +841,10 @@ stages:
 
           az aks get-credentials --resource-group $(QA_RESOURCE_GROUP) --name $(QA_AKS_NAME) --admin --overwrite-existing
           helm repo update
-          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --timeout 20m --atomic --cleanup-on-fail
+          helm uninstall prometheus -n monitoring 2>/dev/null || echo "No previous release"
+          kubectl delete namespace monitoring --timeout=60s 2>/dev/null || echo "Namespace clean"
+          sleep 10
+          helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --timeout 20m
           kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=600s || true
           sleep 30
 
@@ -838,7 +870,10 @@ stages:
 
           az aks get-credentials --resource-group $(PROD_RESOURCE_GROUP) --name $(PROD_AKS_NAME) --admin --overwrite-existing
           helm repo update
-          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --timeout 20m --atomic --cleanup-on-fail
+          helm uninstall prometheus -n monitoring 2>/dev/null || echo "No previous release"
+          kubectl delete namespace monitoring --timeout=60s 2>/dev/null || echo "Namespace clean"
+          sleep 10
+          helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --timeout 20m
           kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=600s || true
           sleep 30
 
