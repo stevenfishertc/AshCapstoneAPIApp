@@ -495,7 +495,7 @@ stages:
           - task: AzureCLI@2
             displayName: "Deploy to DEV AKS"
             env:
-              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              GITHUB_PAT: $(GITHUB_PAT)
             inputs:
               azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
@@ -543,9 +543,14 @@ stages:
                 git add kustomization.yaml
                 git commit -m "Update DEV image tags to $(IMAGE_TAG) [skip ci]" || echo "No changes to commit"
 
-                # Push using Azure DevOps authentication
+                # Push using GitHub authentication
                 echo "Pushing changes to repository..."
-                git -c http.extraheader="AUTHORIZATION: bearer $SYSTEM_ACCESSTOKEN" push origin HEAD:main
+                if [ -n "${GITHUB_PAT:-}" ]; then
+                  git push https://${GITHUB_PAT}@github.com/stevenfishertc/AshCapstoneAPIApp.git HEAD:main
+                else
+                  echo "Warning: GITHUB_PAT not configured, skipping git push. Image tags will not persist in Git."
+                  echo "To enable GitOps sync, add GITHUB_PAT variable to pipeline with GitHub Personal Access Token."
+                fi
 
                 # Deploy backend manifests
                 kubectl apply -k .
@@ -637,7 +642,7 @@ stages:
           - task: AzureCLI@2
             displayName: "Deploy to QA AKS"
             env:
-              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              GITHUB_PAT: $(GITHUB_PAT)
             inputs:
               azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
@@ -674,9 +679,14 @@ stages:
                 git add kustomization.yaml
                 git commit -m "Update QA image tags to $(IMAGE_TAG) [skip ci]" || echo "No changes to commit"
 
-                # Push using Azure DevOps authentication
+                # Push using GitHub authentication
                 echo "Pushing changes to repository..."
-                git -c http.extraheader="AUTHORIZATION: bearer $SYSTEM_ACCESSTOKEN" push origin HEAD:main
+                if [ -n "${GITHUB_PAT:-}" ]; then
+                  git push https://${GITHUB_PAT}@github.com/stevenfishertc/AshCapstoneAPIApp.git HEAD:main
+                else
+                  echo "Warning: GITHUB_PAT not configured, skipping git push. Image tags will not persist in Git."
+                  echo "To enable GitOps sync, add GITHUB_PAT variable to pipeline with GitHub Personal Access Token."
+                fi
 
                 kubectl apply -k .
 
@@ -716,7 +726,7 @@ stages:
           - task: AzureCLI@2
             displayName: "Deploy to PROD AKS"
             env:
-              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              GITHUB_PAT: $(GITHUB_PAT)
             inputs:
               azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
@@ -753,9 +763,14 @@ stages:
                 git add kustomization.yaml
                 git commit -m "Update PROD image tags to $(IMAGE_TAG) [skip ci]" || echo "No changes to commit"
 
-                # Push using Azure DevOps authentication
+                # Push using GitHub authentication
                 echo "Pushing changes to repository..."
-                git -c http.extraheader="AUTHORIZATION: bearer $SYSTEM_ACCESSTOKEN" push origin HEAD:main
+                if [ -n "${GITHUB_PAT:-}" ]; then
+                  git push https://${GITHUB_PAT}@github.com/stevenfishertc/AshCapstoneAPIApp.git HEAD:main
+                else
+                  echo "Warning: GITHUB_PAT not configured, skipping git push. Image tags will not persist in Git."
+                  echo "To enable GitOps sync, add GITHUB_PAT variable to pipeline with GitHub Personal Access Token."
+                fi
 
                 kubectl apply -k .
 
