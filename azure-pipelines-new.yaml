@@ -492,10 +492,19 @@ stages:
           steps:
           - checkout: self
             persistCredentials: true
+            fetchDepth: 0
 
           - bash: |
-              git checkout main
+              echo "Current git status:"
+              git status
+              echo ""
+              echo "Available branches:"
+              git branch -a
+              echo ""
+              echo "Checking out main branch..."
+              git checkout -B main origin/main
               git pull origin main
+              echo "Now on branch: $(git branch --show-current)"
             displayName: "Switch to main branch"
 
           - task: AzureCLI@2
@@ -665,10 +674,19 @@ stages:
           steps:
           - checkout: self
             persistCredentials: true
+            fetchDepth: 0
 
           - bash: |
-              git checkout main
+              echo "Current git status:"
+              git status
+              echo ""
+              echo "Available branches:"
+              git branch -a
+              echo ""
+              echo "Checking out main branch..."
+              git checkout -B main origin/main
               git pull origin main
+              echo "Now on branch: $(git branch --show-current)"
             displayName: "Switch to main branch"
 
           - task: AzureCLI@2
@@ -775,10 +793,19 @@ stages:
           steps:
           - checkout: self
             persistCredentials: true
+            fetchDepth: 0
 
           - bash: |
-              git checkout main
+              echo "Current git status:"
+              git status
+              echo ""
+              echo "Available branches:"
+              git branch -a
+              echo ""
+              echo "Checking out main branch..."
+              git checkout -B main origin/main
               git pull origin main
+              echo "Now on branch: $(git branch --show-current)"
             displayName: "Switch to main branch"
 
           - task: AzureCLI@2
