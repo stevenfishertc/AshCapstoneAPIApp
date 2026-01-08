@@ -765,11 +765,21 @@ stages:
             --namespace monitoring \
             --create-namespace \
             --values monitoring/prometheus-values.yaml \
-            --wait \
-            --timeout 10m
+            --timeout 20m \
+            --atomic \
+            --cleanup-on-fail
 
-          echo "Waiting for pods..."
-          kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=300s || true
+          echo "Waiting for Grafana pods to be ready..."
+          kubectl wait --for=condition=ready pod \
+            --selector=app.kubernetes.io/name=grafana \
+            --namespace monitoring \
+            --timeout=600s || echo "Grafana pods not ready yet, continuing..."
+
+          echo "Waiting for Prometheus pods to be ready..."
+          kubectl wait --for=condition=ready pod \
+            --selector=app.kubernetes.io/name=prometheus \
+            --namespace monitoring \
+            --timeout=600s || echo "Prometheus pods not ready yet, continuing..."
 
           echo ""
           echo "Getting LoadBalancer IPs..."
@@ -802,8 +812,8 @@ stages:
 
           az aks get-credentials --resource-group $(QA_RESOURCE_GROUP) --name $(QA_AKS_NAME) --admin --overwrite-existing
           helm repo update
-          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --wait --timeout 10m
-          kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=300s || true
+          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --timeout 20m --atomic --cleanup-on-fail
+          kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=600s || true
           sleep 30
 
           PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
@@ -828,8 +838,8 @@ stages:
 
           az aks get-credentials --resource-group $(PROD_RESOURCE_GROUP) --name $(PROD_AKS_NAME) --admin --overwrite-existing
           helm repo update
-          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --wait --timeout 10m
-          kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=300s || true
+          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --timeout 20m --atomic --cleanup-on-fail
+          kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=600s || true
           sleep 30
 
           PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
