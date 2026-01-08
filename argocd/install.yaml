@@ -1,0 +1,39 @@
+# ArgoCD Installation Manifest
+# This installs ArgoCD in the argocd namespace
+# Run: kubectl apply -f argocd/install.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+
+---
+# ArgoCD will be installed via official installation manifest
+# Reference: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#
+# To install ArgoCD, run:
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#
+# This file creates the namespace and includes a LoadBalancer service for easier access
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-server-lb
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-server
+    app.kubernetes.io/component: server
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: argocd-server
