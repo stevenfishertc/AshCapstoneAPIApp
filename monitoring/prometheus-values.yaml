@@ -1,0 +1,102 @@
+# Prometheus Stack Configuration
+# This uses the kube-prometheus-stack Helm chart which includes:
+# - Prometheus (metrics collection)
+# - Grafana (dashboards)
+# - Alertmanager (alerting)
+# - Node exporter (node metrics)
+# - Kube-state-metrics (k8s resource metrics)
+
+# Prometheus Configuration
+prometheus:
+  prometheusSpec:
+    # Retention period for metrics
+    retention: 7d
+
+    # Storage configuration
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+    # Service monitor selector - scrape all services with monitoring label
+    serviceMonitorSelector:
+      matchLabels:
+        monitoring: "true"
+
+    # Pod monitor selector
+    podMonitorSelector:
+      matchLabels:
+        monitoring: "true"
+
+  # Expose Prometheus with LoadBalancer
+  service:
+    type: LoadBalancer
+    port: 9090
+
+# Grafana Configuration
+grafana:
+  enabled: true
+
+  # Admin credentials
+  adminPassword: "admin123"  # Change this after deployment!
+
+  # Expose Grafana with LoadBalancer
+  service:
+    type: LoadBalancer
+    port: 80
+
+  # Pre-configured datasource pointing to Prometheus
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-operated:9090
+        access: proxy
+        isDefault: true
+
+  # Enable persistence for dashboards
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# Alertmanager Configuration
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+# Node Exporter - Collects node-level metrics
+nodeExporter:
+  enabled: true
+
+# Kube State Metrics - Collects K8s resource metrics
+kubeStateMetrics:
+  enabled: true
+
+# Default rules and alerts
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false  # We don't manage etcd in AKS
+    kubeApiserver: true
+    kubePrometheusNodeRecording: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeScheduler: false  # Not accessible in AKS
+    network: true
+    node: true
+    prometheus: true

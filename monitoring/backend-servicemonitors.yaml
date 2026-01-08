@@ -1,0 +1,35 @@
+# ServiceMonitors tell Prometheus which services to scrape for metrics
+# These will be applied to your backend-a and backend-b services
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-a-monitor
+  labels:
+    monitoring: "true"
+    app: backend-a
+spec:
+  selector:
+    matchLabels:
+      app: backend-a
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-b-monitor
+  labels:
+    monitoring: "true"
+    app: backend-b
+spec:
+  selector:
+    matchLabels:
+      app: backend-b
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
