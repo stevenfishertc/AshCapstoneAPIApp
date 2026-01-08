@@ -289,8 +289,46 @@ stages:
           echo "Waiting for ArgoCD to be ready..."
           kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd || true
 
-          echo "Getting ArgoCD initial admin password..."
-          kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || echo "Password secret not ready yet"
+          echo ""
+          echo "=========================================="
+          echo "Waiting for ArgoCD LoadBalancer IP..."
+          echo "=========================================="
+          for i in {1..60}; do
+            ARGOCD_IP=$(kubectl get svc argocd-server-lb -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$ARGOCD_IP" ]; then
+              echo "✅ LoadBalancer IP acquired: $ARGOCD_IP"
+              break
+            fi
+            echo "⏳ Waiting for LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "📊 ArgoCD DEV Environment Access Info"
+          echo "=========================================="
+
+          if [ ! -z "$ARGOCD_IP" ]; then
+            echo "🌐 ArgoCD UI URL: http://$ARGOCD_IP"
+          else
+            echo "⚠️  LoadBalancer IP not yet assigned"
+            echo "   Run: kubectl get svc argocd-server-lb -n argocd"
+          fi
+
+          echo ""
+          echo "👤 Login Credentials:"
+          echo "   Username: admin"
+
+          ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "")
+          if [ ! -z "$ARGOCD_PASSWORD" ]; then
+            echo "   Password: $ARGOCD_PASSWORD"
+          else
+            echo "   ⚠️  Password not yet available"
+            echo "   Run: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+          fi
+
+          echo ""
+          echo "=========================================="
       continueOnError: true
 
     # ---------- DEPLOY ARGOCD TO QA ----------
@@ -319,8 +357,46 @@ stages:
           echo "Waiting for ArgoCD to be ready..."
           kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd || true
 
-          echo "Getting ArgoCD initial admin password..."
-          kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || echo "Password secret not ready yet"
+          echo ""
+          echo "=========================================="
+          echo "Waiting for ArgoCD LoadBalancer IP..."
+          echo "=========================================="
+          for i in {1..60}; do
+            ARGOCD_IP=$(kubectl get svc argocd-server-lb -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$ARGOCD_IP" ]; then
+              echo "✅ LoadBalancer IP acquired: $ARGOCD_IP"
+              break
+            fi
+            echo "⏳ Waiting for LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "📊 ArgoCD QA Environment Access Info"
+          echo "=========================================="
+
+          if [ ! -z "$ARGOCD_IP" ]; then
+            echo "🌐 ArgoCD UI URL: http://$ARGOCD_IP"
+          else
+            echo "⚠️  LoadBalancer IP not yet assigned"
+            echo "   Run: kubectl get svc argocd-server-lb -n argocd"
+          fi
+
+          echo ""
+          echo "👤 Login Credentials:"
+          echo "   Username: admin"
+
+          ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "")
+          if [ ! -z "$ARGOCD_PASSWORD" ]; then
+            echo "   Password: $ARGOCD_PASSWORD"
+          else
+            echo "   ⚠️  Password not yet available"
+            echo "   Run: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+          fi
+
+          echo ""
+          echo "=========================================="
       continueOnError: true
 
     # ---------- DEPLOY ARGOCD TO PROD ----------
@@ -349,8 +425,46 @@ stages:
           echo "Waiting for ArgoCD to be ready..."
           kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd || true
 
-          echo "Getting ArgoCD initial admin password..."
-          kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || echo "Password secret not ready yet"
+          echo ""
+          echo "=========================================="
+          echo "Waiting for ArgoCD LoadBalancer IP..."
+          echo "=========================================="
+          for i in {1..60}; do
+            ARGOCD_IP=$(kubectl get svc argocd-server-lb -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$ARGOCD_IP" ]; then
+              echo "✅ LoadBalancer IP acquired: $ARGOCD_IP"
+              break
+            fi
+            echo "⏳ Waiting for LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "📊 ArgoCD PROD Environment Access Info"
+          echo "=========================================="
+
+          if [ ! -z "$ARGOCD_IP" ]; then
+            echo "🌐 ArgoCD UI URL: http://$ARGOCD_IP"
+          else
+            echo "⚠️  LoadBalancer IP not yet assigned"
+            echo "   Run: kubectl get svc argocd-server-lb -n argocd"
+          fi
+
+          echo ""
+          echo "👤 Login Credentials:"
+          echo "   Username: admin"
+
+          ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "")
+          if [ ! -z "$ARGOCD_PASSWORD" ]; then
+            echo "   Password: $ARGOCD_PASSWORD"
+          else
+            echo "   ⚠️  Password not yet available"
+            echo "   Run: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+          fi
+
+          echo ""
+          echo "=========================================="
       continueOnError: true
 
 # =========================================================
