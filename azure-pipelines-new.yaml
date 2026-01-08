@@ -545,11 +545,22 @@ stages:
 
                 # Push using GitHub authentication
                 echo "Pushing changes to repository..."
-                if [ -n "${GITHUB_PAT:-}" ]; then
+                if [ -n "${GITHUB_PAT:-}" ] && [ "${GITHUB_PAT}" != "\$(GITHUB_PAT)" ]; then
+                  echo "GITHUB_PAT is configured, pushing to repository..."
                   git push https://${GITHUB_PAT}@github.com/stevenfishertc/AshCapstoneAPIApp.git HEAD:main
+                  echo "✅ Successfully pushed image tag updates to Git"
                 else
-                  echo "Warning: GITHUB_PAT not configured, skipping git push. Image tags will not persist in Git."
-                  echo "To enable GitOps sync, add GITHUB_PAT variable to pipeline with GitHub Personal Access Token."
+                  echo "=========================================="
+                  echo "⚠️  WARNING: GITHUB_PAT not configured"
+                  echo "=========================================="
+                  echo "Git push skipped. Image tags will not persist in Git."
+                  echo "ArgoCD will revert to old tags from Git."
+                  echo ""
+                  echo "To enable GitOps sync:"
+                  echo "1. Create GitHub Personal Access Token with 'repo' scope"
+                  echo "2. Add GITHUB_PAT variable to Azure Pipeline (mark as secret)"
+                  echo "3. Re-run the pipeline"
+                  echo "=========================================="
                 fi
 
                 # Deploy backend manifests
@@ -681,11 +692,22 @@ stages:
 
                 # Push using GitHub authentication
                 echo "Pushing changes to repository..."
-                if [ -n "${GITHUB_PAT:-}" ]; then
+                if [ -n "${GITHUB_PAT:-}" ] && [ "${GITHUB_PAT}" != "\$(GITHUB_PAT)" ]; then
+                  echo "GITHUB_PAT is configured, pushing to repository..."
                   git push https://${GITHUB_PAT}@github.com/stevenfishertc/AshCapstoneAPIApp.git HEAD:main
+                  echo "✅ Successfully pushed image tag updates to Git"
                 else
-                  echo "Warning: GITHUB_PAT not configured, skipping git push. Image tags will not persist in Git."
-                  echo "To enable GitOps sync, add GITHUB_PAT variable to pipeline with GitHub Personal Access Token."
+                  echo "=========================================="
+                  echo "⚠️  WARNING: GITHUB_PAT not configured"
+                  echo "=========================================="
+                  echo "Git push skipped. Image tags will not persist in Git."
+                  echo "ArgoCD will revert to old tags from Git."
+                  echo ""
+                  echo "To enable GitOps sync:"
+                  echo "1. Create GitHub Personal Access Token with 'repo' scope"
+                  echo "2. Add GITHUB_PAT variable to Azure Pipeline (mark as secret)"
+                  echo "3. Re-run the pipeline"
+                  echo "=========================================="
                 fi
 
                 kubectl apply -k .
@@ -765,11 +787,22 @@ stages:
 
                 # Push using GitHub authentication
                 echo "Pushing changes to repository..."
-                if [ -n "${GITHUB_PAT:-}" ]; then
+                if [ -n "${GITHUB_PAT:-}" ] && [ "${GITHUB_PAT}" != "\$(GITHUB_PAT)" ]; then
+                  echo "GITHUB_PAT is configured, pushing to repository..."
                   git push https://${GITHUB_PAT}@github.com/stevenfishertc/AshCapstoneAPIApp.git HEAD:main
+                  echo "✅ Successfully pushed image tag updates to Git"
                 else
-                  echo "Warning: GITHUB_PAT not configured, skipping git push. Image tags will not persist in Git."
-                  echo "To enable GitOps sync, add GITHUB_PAT variable to pipeline with GitHub Personal Access Token."
+                  echo "=========================================="
+                  echo "⚠️  WARNING: GITHUB_PAT not configured"
+                  echo "=========================================="
+                  echo "Git push skipped. Image tags will not persist in Git."
+                  echo "ArgoCD will revert to old tags from Git."
+                  echo ""
+                  echo "To enable GitOps sync:"
+                  echo "1. Create GitHub Personal Access Token with 'repo' scope"
+                  echo "2. Add GITHUB_PAT variable to Azure Pipeline (mark as secret)"
+                  echo "3. Re-run the pipeline"
+                  echo "=========================================="
                 fi
 
                 kubectl apply -k .
