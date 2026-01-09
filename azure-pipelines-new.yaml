@@ -954,19 +954,53 @@ stages:
             --timeout=600s || echo "Prometheus pods not ready yet, continuing..."
 
           echo ""
-          echo "Getting LoadBalancer IPs..."
-          sleep 30
+          echo "=========================================="
+          echo "Waiting for LoadBalancer IPs..."
+          echo "=========================================="
 
-          PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-          GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+          # Wait for Prometheus LoadBalancer IP
+          for i in {1..60}; do
+            PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$PROMETHEUS_IP" ]; then
+              echo "✅ Prometheus LoadBalancer IP acquired: $PROMETHEUS_IP"
+              break
+            fi
+            echo "⏳ Waiting for Prometheus LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
+
+          # Wait for Grafana LoadBalancer IP
+          for i in {1..60}; do
+            GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$GRAFANA_IP" ]; then
+              echo "✅ Grafana LoadBalancer IP acquired: $GRAFANA_IP"
+              break
+            fi
+            echo "⏳ Waiting for Grafana LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
 
           echo ""
           echo "=========================================="
           echo "📊 Monitoring DEV Environment"
           echo "=========================================="
-          echo "🔍 Prometheus: http://$PROMETHEUS_IP:9090"
-          echo "📈 Grafana: http://$GRAFANA_IP"
-          echo "   Username: admin | Password: admin123"
+          if [ ! -z "$PROMETHEUS_IP" ]; then
+            echo "🔍 Prometheus: http://$PROMETHEUS_IP:9090"
+          else
+            echo "🔍 Prometheus: ⚠️  LoadBalancer IP not yet assigned"
+          fi
+
+          if [ ! -z "$GRAFANA_IP" ]; then
+            echo "📈 Grafana: http://$GRAFANA_IP"
+            echo "   Username: admin | Password: admin123"
+          else
+            echo "📈 Grafana: ⚠️  LoadBalancer IP not yet assigned"
+            echo "   Username: admin | Password: admin123"
+          fi
+          echo "=========================================="
+          echo ""
+          echo "Note: If IPs are not assigned, check LoadBalancer status with:"
+          echo "  kubectl get svc -n monitoring"
           echo "=========================================="
 
           kubectl apply -f monitoring/backend-servicemonitors.yaml || true
@@ -989,13 +1023,52 @@ stages:
           sleep 10
           helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --timeout 20m
           kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=600s || true
-          sleep 30
+          kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=prometheus --namespace monitoring --timeout=600s || true
 
-          PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-          GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-
+          echo ""
           echo "=========================================="
-          echo "📊 Monitoring QA: Prometheus http://$PROMETHEUS_IP:9090 | Grafana http://$GRAFANA_IP (admin/admin123)"
+          echo "Waiting for LoadBalancer IPs..."
+          echo "=========================================="
+
+          # Wait for Prometheus LoadBalancer IP
+          for i in {1..60}; do
+            PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$PROMETHEUS_IP" ]; then
+              echo "✅ Prometheus LoadBalancer IP acquired: $PROMETHEUS_IP"
+              break
+            fi
+            echo "⏳ Waiting for Prometheus LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
+
+          # Wait for Grafana LoadBalancer IP
+          for i in {1..60}; do
+            GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$GRAFANA_IP" ]; then
+              echo "✅ Grafana LoadBalancer IP acquired: $GRAFANA_IP"
+              break
+            fi
+            echo "⏳ Waiting for Grafana LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "📊 Monitoring QA Environment"
+          echo "=========================================="
+          if [ ! -z "$PROMETHEUS_IP" ]; then
+            echo "🔍 Prometheus: http://$PROMETHEUS_IP:9090"
+          else
+            echo "🔍 Prometheus: ⚠️  LoadBalancer IP not yet assigned"
+          fi
+
+          if [ ! -z "$GRAFANA_IP" ]; then
+            echo "📈 Grafana: http://$GRAFANA_IP"
+            echo "   Username: admin | Password: admin123"
+          else
+            echo "📈 Grafana: ⚠️  LoadBalancer IP not yet assigned"
+            echo "   Username: admin | Password: admin123"
+          fi
           echo "=========================================="
 
           kubectl apply -f monitoring/backend-servicemonitors.yaml || true
@@ -1018,13 +1091,52 @@ stages:
           sleep 10
           helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --values monitoring/prometheus-values.yaml --timeout 20m
           kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=grafana --namespace monitoring --timeout=600s || true
-          sleep 30
+          kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=prometheus --namespace monitoring --timeout=600s || true
 
-          PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-          GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-
+          echo ""
           echo "=========================================="
-          echo "📊 Monitoring PROD: Prometheus http://$PROMETHEUS_IP:9090 | Grafana http://$GRAFANA_IP (admin/admin123)"
+          echo "Waiting for LoadBalancer IPs..."
+          echo "=========================================="
+
+          # Wait for Prometheus LoadBalancer IP
+          for i in {1..60}; do
+            PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$PROMETHEUS_IP" ]; then
+              echo "✅ Prometheus LoadBalancer IP acquired: $PROMETHEUS_IP"
+              break
+            fi
+            echo "⏳ Waiting for Prometheus LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
+
+          # Wait for Grafana LoadBalancer IP
+          for i in {1..60}; do
+            GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$GRAFANA_IP" ]; then
+              echo "✅ Grafana LoadBalancer IP acquired: $GRAFANA_IP"
+              break
+            fi
+            echo "⏳ Waiting for Grafana LoadBalancer IP... ($i/60)"
+            sleep 5
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "📊 Monitoring PROD Environment"
+          echo "=========================================="
+          if [ ! -z "$PROMETHEUS_IP" ]; then
+            echo "🔍 Prometheus: http://$PROMETHEUS_IP:9090"
+          else
+            echo "🔍 Prometheus: ⚠️  LoadBalancer IP not yet assigned"
+          fi
+
+          if [ ! -z "$GRAFANA_IP" ]; then
+            echo "📈 Grafana: http://$GRAFANA_IP"
+            echo "   Username: admin | Password: admin123"
+          else
+            echo "📈 Grafana: ⚠️  LoadBalancer IP not yet assigned"
+            echo "   Username: admin | Password: admin123"
+          fi
           echo "=========================================="
 
           kubectl apply -f monitoring/backend-servicemonitors.yaml || true
