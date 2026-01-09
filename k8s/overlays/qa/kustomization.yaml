@@ -1,22 +1,24 @@
 resources:
-  - ../../base
-  - namespace.yaml
-  - configmap-db.yaml
+- ../../base
+- namespace.yaml
+- configmap-db.yaml
 
 namespace: capstone-backend
 
 nameSuffix: -steven
 
 replicas:
-  - name: backend-a
-    count: 2
-  - name: backend-b
-    count: 2
+- count: 2
+  name: backend-a
+- count: 2
+  name: backend-b
 
 images:
-  - name: backend-a
-    newName: acrcapstoneqaa1b2c.azurecr.io/backend-a
-    newTag: "144"
-  - name: backend-b
-    newName: acrcapstoneqaa1b2c.azurecr.io/backend-b
-    newTag: "144"
+- name: backend-a
+  newName: acrcapstoneqaa1b2c.azurecr.io/backend-a
+  newTag: "266"
+- name: backend-b
+  newName: acrcapstoneqaa1b2c.azurecr.io/backend-b
+  newTag: "266"
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
