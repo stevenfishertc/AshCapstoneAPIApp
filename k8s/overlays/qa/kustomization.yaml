@@ -16,9 +16,9 @@ replicas:
 images:
 - name: backend-a
   newName: acrcapstoneqaa1b2c.azurecr.io/backend-a
-  newTag: "267"
+  newTag: "268"
 - name: backend-b
   newName: acrcapstoneqaa1b2c.azurecr.io/backend-b
-  newTag: "267"
+  newTag: "268"
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
