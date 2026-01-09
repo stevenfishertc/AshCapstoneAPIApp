@@ -954,29 +954,22 @@ stages:
             --timeout=600s || echo "Prometheus pods not ready yet, continuing..."
 
           echo ""
+          echo "Deploying Ingress for Prometheus and Grafana..."
+          kubectl apply -f monitoring/monitoring-ingress.yaml
+
+          echo ""
           echo "=========================================="
-          echo "Waiting for LoadBalancer IPs..."
+          echo "Waiting for Ingress LoadBalancer IP..."
           echo "=========================================="
 
-          # Wait for Prometheus LoadBalancer IP
+          # Wait for Ingress LoadBalancer IP (reuses existing ingress-nginx)
           for i in {1..60}; do
-            PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-            if [ ! -z "$PROMETHEUS_IP" ]; then
-              echo "✅ Prometheus LoadBalancer IP acquired: $PROMETHEUS_IP"
+            INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$INGRESS_IP" ]; then
+              echo "✅ Ingress LoadBalancer IP acquired: $INGRESS_IP"
               break
             fi
-            echo "⏳ Waiting for Prometheus LoadBalancer IP... ($i/60)"
-            sleep 5
-          done
-
-          # Wait for Grafana LoadBalancer IP
-          for i in {1..60}; do
-            GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-            if [ ! -z "$GRAFANA_IP" ]; then
-              echo "✅ Grafana LoadBalancer IP acquired: $GRAFANA_IP"
-              break
-            fi
-            echo "⏳ Waiting for Grafana LoadBalancer IP... ($i/60)"
+            echo "⏳ Waiting for Ingress LoadBalancer IP... ($i/60)"
             sleep 5
           done
 
@@ -984,23 +977,14 @@ stages:
           echo "=========================================="
           echo "📊 Monitoring DEV Environment"
           echo "=========================================="
-          if [ ! -z "$PROMETHEUS_IP" ]; then
-            echo "🔍 Prometheus: http://$PROMETHEUS_IP:9090"
-          else
-            echo "🔍 Prometheus: ⚠️  LoadBalancer IP not yet assigned"
-          fi
-
-          if [ ! -z "$GRAFANA_IP" ]; then
-            echo "📈 Grafana: http://$GRAFANA_IP"
+          if [ ! -z "$INGRESS_IP" ]; then
+            echo "🔍 Prometheus: http://$INGRESS_IP/prometheus"
+            echo "📈 Grafana: http://$INGRESS_IP/grafana"
             echo "   Username: admin | Password: admin123"
           else
-            echo "📈 Grafana: ⚠️  LoadBalancer IP not yet assigned"
-            echo "   Username: admin | Password: admin123"
+            echo "⚠️  Ingress IP not yet assigned"
+            echo "   Check status: kubectl get svc ingress-nginx-controller -n ingress-nginx"
           fi
-          echo "=========================================="
-          echo ""
-          echo "Note: If IPs are not assigned, check LoadBalancer status with:"
-          echo "  kubectl get svc -n monitoring"
           echo "=========================================="
 
           kubectl apply -f monitoring/backend-servicemonitors.yaml || true
@@ -1026,29 +1010,22 @@ stages:
           kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=prometheus --namespace monitoring --timeout=600s || true
 
           echo ""
+          echo "Deploying Ingress for Prometheus and Grafana..."
+          kubectl apply -f monitoring/monitoring-ingress.yaml
+
+          echo ""
           echo "=========================================="
-          echo "Waiting for LoadBalancer IPs..."
+          echo "Waiting for Ingress LoadBalancer IP..."
           echo "=========================================="
 
-          # Wait for Prometheus LoadBalancer IP
+          # Wait for Ingress LoadBalancer IP (reuses existing ingress-nginx)
           for i in {1..60}; do
-            PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-            if [ ! -z "$PROMETHEUS_IP" ]; then
-              echo "✅ Prometheus LoadBalancer IP acquired: $PROMETHEUS_IP"
+            INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$INGRESS_IP" ]; then
+              echo "✅ Ingress LoadBalancer IP acquired: $INGRESS_IP"
               break
             fi
-            echo "⏳ Waiting for Prometheus LoadBalancer IP... ($i/60)"
-            sleep 5
-          done
-
-          # Wait for Grafana LoadBalancer IP
-          for i in {1..60}; do
-            GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-            if [ ! -z "$GRAFANA_IP" ]; then
-              echo "✅ Grafana LoadBalancer IP acquired: $GRAFANA_IP"
-              break
-            fi
-            echo "⏳ Waiting for Grafana LoadBalancer IP... ($i/60)"
+            echo "⏳ Waiting for Ingress LoadBalancer IP... ($i/60)"
             sleep 5
           done
 
@@ -1056,18 +1033,13 @@ stages:
           echo "=========================================="
           echo "📊 Monitoring QA Environment"
           echo "=========================================="
-          if [ ! -z "$PROMETHEUS_IP" ]; then
-            echo "🔍 Prometheus: http://$PROMETHEUS_IP:9090"
-          else
-            echo "🔍 Prometheus: ⚠️  LoadBalancer IP not yet assigned"
-          fi
-
-          if [ ! -z "$GRAFANA_IP" ]; then
-            echo "📈 Grafana: http://$GRAFANA_IP"
+          if [ ! -z "$INGRESS_IP" ]; then
+            echo "🔍 Prometheus: http://$INGRESS_IP/prometheus"
+            echo "📈 Grafana: http://$INGRESS_IP/grafana"
             echo "   Username: admin | Password: admin123"
           else
-            echo "📈 Grafana: ⚠️  LoadBalancer IP not yet assigned"
-            echo "   Username: admin | Password: admin123"
+            echo "⚠️  Ingress IP not yet assigned"
+            echo "   Check status: kubectl get svc ingress-nginx-controller -n ingress-nginx"
           fi
           echo "=========================================="
 
@@ -1094,29 +1066,22 @@ stages:
           kubectl wait --for=condition=ready pod --selector=app.kubernetes.io/name=prometheus --namespace monitoring --timeout=600s || true
 
           echo ""
+          echo "Deploying Ingress for Prometheus and Grafana..."
+          kubectl apply -f monitoring/monitoring-ingress.yaml
+
+          echo ""
           echo "=========================================="
-          echo "Waiting for LoadBalancer IPs..."
+          echo "Waiting for Ingress LoadBalancer IP..."
           echo "=========================================="
 
-          # Wait for Prometheus LoadBalancer IP
+          # Wait for Ingress LoadBalancer IP (reuses existing ingress-nginx)
           for i in {1..60}; do
-            PROMETHEUS_IP=$(kubectl get svc prometheus-kube-prometheus-prometheus -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-            if [ ! -z "$PROMETHEUS_IP" ]; then
-              echo "✅ Prometheus LoadBalancer IP acquired: $PROMETHEUS_IP"
+            INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$INGRESS_IP" ]; then
+              echo "✅ Ingress LoadBalancer IP acquired: $INGRESS_IP"
               break
             fi
-            echo "⏳ Waiting for Prometheus LoadBalancer IP... ($i/60)"
-            sleep 5
-          done
-
-          # Wait for Grafana LoadBalancer IP
-          for i in {1..60}; do
-            GRAFANA_IP=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-            if [ ! -z "$GRAFANA_IP" ]; then
-              echo "✅ Grafana LoadBalancer IP acquired: $GRAFANA_IP"
-              break
-            fi
-            echo "⏳ Waiting for Grafana LoadBalancer IP... ($i/60)"
+            echo "⏳ Waiting for Ingress LoadBalancer IP... ($i/60)"
             sleep 5
           done
 
@@ -1124,18 +1089,13 @@ stages:
           echo "=========================================="
           echo "📊 Monitoring PROD Environment"
           echo "=========================================="
-          if [ ! -z "$PROMETHEUS_IP" ]; then
-            echo "🔍 Prometheus: http://$PROMETHEUS_IP:9090"
-          else
-            echo "🔍 Prometheus: ⚠️  LoadBalancer IP not yet assigned"
-          fi
-
-          if [ ! -z "$GRAFANA_IP" ]; then
-            echo "📈 Grafana: http://$GRAFANA_IP"
+          if [ ! -z "$INGRESS_IP" ]; then
+            echo "🔍 Prometheus: http://$INGRESS_IP/prometheus"
+            echo "📈 Grafana: http://$INGRESS_IP/grafana"
             echo "   Username: admin | Password: admin123"
           else
-            echo "📈 Grafana: ⚠️  LoadBalancer IP not yet assigned"
-            echo "   Username: admin | Password: admin123"
+            echo "⚠️  Ingress IP not yet assigned"
+            echo "   Check status: kubectl get svc ingress-nginx-controller -n ingress-nginx"
           fi
           echo "=========================================="
 

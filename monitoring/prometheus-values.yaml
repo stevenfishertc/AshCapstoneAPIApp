@@ -31,9 +31,9 @@ prometheus:
       matchLabels:
         monitoring: "true"
 
-  # Expose Prometheus with LoadBalancer
+  # Expose Prometheus with ClusterIP (will use Ingress)
   service:
-    type: LoadBalancer
+    type: ClusterIP
     port: 9090
 
 # Grafana Configuration
@@ -43,9 +43,15 @@ grafana:
   # Admin credentials
   adminPassword: "admin123"  # Change this after deployment!
 
-  # Expose Grafana with LoadBalancer
+  # Configure Grafana to work behind Ingress subpath
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana/"
+      serve_from_sub_path: true
+
+  # Expose Grafana with ClusterIP (will use Ingress)
   service:
-    type: LoadBalancer
+    type: ClusterIP
     port: 80
 
   # Pre-configured datasource pointing to Prometheus
